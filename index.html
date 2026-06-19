@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0b0d14">
+<title>PharmaCash Pro</title>
+<style>
+:root{
+  --bg:#0b0d14;--surface:#13161f;--surface2:#1c2030;--surface3:#242840;
+  --border:#2a2f47;--border2:#353b58;
+  --green:#00d68f;--green-dim:rgba(0,214,143,.13);
+  --blue:#4d8af0;--blue-dim:rgba(77,138,240,.13);
+  --amber:#f5a623;--amber-dim:rgba(245,166,35,.13);
+  --red:#f05050;--red-dim:rgba(240,80,80,.13);
+  --purple:#a855f7;--purple-dim:rgba(168,85,247,.13);
+  --cyan:#22d3ee;--cyan-dim:rgba(34,211,238,.13);
+  --text:#e8eaf0;--text2:#8891b0;--text3:#454c6a;
+  --r:10px;--font:'Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;overflow-x:hidden}
+.sync-dot{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;margin-right:5px;transition:background .3s}
+.sync-dot.syncing{background:var(--amber);animation:pulse 1s infinite}
+.sync-dot.error{background:var(--red)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+#loginScreen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;
+  background:radial-gradient(ellipse at 30% 20%,rgba(0,214,143,.07),transparent 60%),
+              radial-gradient(ellipse at 80% 80%,rgba(77,138,240,.07),transparent 60%),var(--bg)}
+.login-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:100%;max-width:380px}
+.login-logo{text-align:center;margin-bottom:28px}
+.brand{font-size:1.6rem;font-weight:800;color:var(--green);letter-spacing:-1px}
+.brand span{color:var(--text2);font-weight:400}
+.brand-sub{font-size:.78rem;color:var(--text3);margin-top:4px}
+.login-box h2{font-size:1rem;margin-bottom:20px;color:var(--text2)}
+.err-box{background:var(--red-dim);border:1px solid rgba(240,80,80,.3);border-radius:8px;padding:10px 14px;font-size:.82rem;color:var(--red);margin-bottom:14px;display:none}
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:14px}
+.fg label{font-size:.75rem;color:var(--text2);text-transform:uppercase;letter-spacing:.7px}
+.fg input,.fg select,.fg textarea,input.fi,select.fi{
+  background:var(--surface2);border:1px solid var(--border);border-radius:8px;
+  color:var(--text);padding:10px 14px;font-size:.9rem;font-family:var(--font);transition:border .2s;width:100%}
+.fg input:focus,.fg select:focus,.fg textarea:focus,input.fi:focus,select.fi:focus{outline:none;border-color:var(--green)}
+.fg select option,select.fi option{background:var(--surface2)}
+.fg textarea{resize:vertical;min-height:60px}
+.fg2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+@media(max-width:480px){.fg2{grid-template-columns:1fr}}
+.fg1{margin-bottom:10px}
+.btn{padding:10px 18px;border-radius:8px;border:none;font-size:.88rem;font-weight:600;cursor:pointer;transition:all .2s;font-family:var(--font)}
+.btn:hover{opacity:.85}
+.btn-green{background:var(--green);color:#0b0d14}.btn-blue{background:var(--blue);color:#fff}
+.btn-ghost{background:var(--surface2);color:var(--text2);border:1px solid var(--border)}
+.btn-ghost:hover{color:var(--text);border-color:var(--border2)}
+.btn-red{background:var(--red-dim);color:var(--red);border:1px solid rgba(240,80,80,.3)}
+.btn-amber{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(245,166,35,.3)}
+.btn-sm{padding:5px 11px;font-size:.76rem}.btn-xs{padding:3px 8px;font-size:.72rem}.btn-full{width:100%;padding:12px}
+#appShell{display:none}
+.app-header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 20px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.brand-sm{font-size:1rem;font-weight:800;color:var(--green);letter-spacing:-.5px}
+.brand-sm span{color:var(--text3);font-weight:400}
+.sync-status{display:flex;align-items:center;font-size:.72rem;color:var(--text2);background:var(--surface2);padding:3px 10px;border-radius:20px;gap:4px}
+.date-chip{font-size:.75rem;color:var(--text2);background:var(--surface2);padding:4px 10px;border-radius:20px}
+.hdr-right{display:flex;align-items:center;gap:8px}
+.user-pill{display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px 4px 8px}
+.uavatar{width:26px;height:26px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:#0b0d14}
+.uname{font-size:.8rem;color:var(--text2)}.urole{font-size:.68rem;color:var(--text3)}
+.app-body{display:flex;min-height:calc(100vh - 54px)}
+.sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);padding:16px 0;flex-shrink:0;position:sticky;top:54px;height:calc(100vh - 54px);overflow-y:auto}
+@media(max-width:700px){.sidebar{display:none}}
+.nav-sec{padding:6px 16px;font-size:.65rem;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-top:8px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 18px;font-size:.84rem;color:var(--text2);cursor:pointer;transition:all .15s;border-left:3px solid transparent}
+.nav-item:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.nav-item.active{color:var(--green);background:var(--green-dim);border-left-color:var(--green)}
+.nav-icon{font-size:1rem;width:18px;text-align:center}
+.app-main{flex:1;padding:20px;min-width:0}
+@media(max-width:700px){.app-main{padding:14px;padding-bottom:80px}}
+.mobile-nav{display:none;background:var(--surface);border-top:1px solid var(--border);position:fixed;bottom:0;left:0;right:0;z-index:100;padding:4px 0}
+@media(max-width:700px){.mobile-nav{display:flex}}
+.mnav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 4px;font-size:.6rem;color:var(--text3);cursor:pointer;transition:color .15s}
+.mnav-item.active{color:var(--green)}.mnav-icon{font-size:1.15rem}
+.pg{display:none}.pg.active{display:block}
+.pg-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px}
+.pg-title{font-size:1.1rem;font-weight:700}.pg-sub{font-size:.78rem;color:var(--text2);margin-top:2px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:18px;margin-bottom:14px}
+.card-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+.card-title{font-size:.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text3)}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:10px;margin-bottom:18px}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px;position:relative;overflow:hidden}
+.stat-card::before{content:'';position:absolute;top:0;right:0;width:55px;height:55px;border-radius:0 0 0 100%;opacity:.08}
+.stat-card.green::before{background:var(--green)}.stat-card.blue::before{background:var(--blue)}
+.stat-card.amber::before{background:var(--amber)}.stat-card.red::before{background:var(--red)}.stat-card.purple::before{background:var(--purple)}
+.stat-lbl{font-size:.7rem;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px}
+.stat-val{font-size:1.3rem;font-weight:800;font-variant-numeric:tabular-nums}
+.stat-val.green{color:var(--green)}.stat-val.blue{color:var(--blue)}.stat-val.amber{color:var(--amber)}.stat-val.red{color:var(--red)}.stat-val.purple{color:var(--purple)}.stat-val.cyan{color:var(--cyan)}
+.stat-sub{font-size:.72rem;color:var(--text2);margin-top:5px}
+.compte-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(195px,1fr));gap:10px;margin-bottom:18px}
+.compte-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px}
+.cc-icon{font-size:1.4rem;margin-bottom:6px}.cc-name{font-size:.82rem;color:var(--text2);margin-bottom:4px}
+.cc-solde{font-size:1.2rem;font-weight:800}.cc-type{font-size:.68rem;color:var(--text3);margin-top:4px}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{text-align:left;padding:8px 10px;color:var(--text3);font-size:.68rem;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:middle}
+tr:last-child td{border-bottom:none}tr:hover td{background:rgba(255,255,255,.02)}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:600;white-space:nowrap}
+.bg{background:var(--green-dim);color:var(--green)}.bb{background:var(--blue-dim);color:var(--blue)}
+.ba{background:var(--amber-dim);color:var(--amber)}.br{background:var(--red-dim);color:var(--red)}
+.bp{background:var(--purple-dim);color:var(--purple)}.bc{background:var(--cyan-dim);color:var(--cyan)}
+.amt{font-weight:700;font-variant-numeric:tabular-nums}
+.amt.pos{color:var(--green)}.amt.neg{color:var(--red)}.amt.neu{color:var(--amber)}
+.tag-principale{color:var(--green);font-weight:600}.tag-depot{color:var(--blue)}
+.wk{font-size:.68rem;color:var(--text2);background:var(--surface3);padding:2px 8px;border-radius:20px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+.filters input,.filters select{max-width:160px;background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 11px;font-size:.82rem;font-family:var(--font)}
+.filters input:focus,.filters select:focus{outline:none;border-color:var(--green)}
+.modal-ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:300;align-items:center;justify-content:center;padding:16px}
+.modal-ov.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;width:100%;max-width:540px;max-height:90vh;overflow-y:auto}
+.modal-hdr{padding:18px 20px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.modal-title{font-size:.98rem;font-weight:700}
+.modal-body{padding:18px 20px}.modal-ftr{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.close-x{background:none;border:none;color:var(--text2);font-size:1.2rem;cursor:pointer}
+.toast{position:fixed;bottom:70px;right:20px;padding:10px 18px;border-radius:8px;font-weight:600;font-size:.84rem;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+@media(min-width:701px){.toast{bottom:20px}}
+.toast.show{opacity:1}.toast.ok{background:var(--green);color:#0b0d14}.toast.err{background:var(--red);color:#fff}.toast.info{background:var(--blue);color:#fff}
+.inner-tabs{display:flex;gap:4px;background:var(--surface2);border-radius:8px;padding:4px;margin-bottom:16px}
+.inner-tab{flex:1;text-align:center;padding:7px;font-size:.78rem;border-radius:6px;cursor:pointer;color:var(--text2);transition:all .15s}
+.inner-tab.active{background:var(--surface);color:var(--text);font-weight:600}
+.caisse-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-bottom:16px}
+.caisse-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px}
+.cc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.cc-caissiere{font-weight:700;font-size:.92rem}.cc-vacation{font-size:.72rem;color:var(--text2);margin-top:2px}
+.ecart-pill{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;font-size:.75rem;font-weight:700}
+.ecart-ok{background:var(--green-dim);color:var(--green)}.ecart-neg{background:var(--red-dim);color:var(--red)}.ecart-pos{background:var(--amber-dim);color:var(--amber)}
+.cc-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(42,47,71,.4);font-size:.82rem}
+.cc-row:last-child{border-bottom:none}.cc-row-lbl{color:var(--text2)}.cc-row-val{font-weight:600;font-variant-numeric:tabular-nums}
+.cc-total-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0 4px;font-size:.9rem;font-weight:700;border-top:1px solid var(--border2);margin-top:4px}
+.clot-status{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.68rem;font-weight:600}
+.clot-open{background:var(--amber-dim);color:var(--amber)}.clot-closed{background:var(--green-dim);color:var(--green)}
+.summary-caisse{background:var(--surface2);border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;gap:24px;flex-wrap:wrap}
+.sc-item{display:flex;flex-direction:column;gap:3px}.sc-lbl{font-size:.68rem;color:var(--text3);text-transform:uppercase;letter-spacing:.7px}.sc-val{font-size:1rem;font-weight:700}
+.tab-day-nav{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.tab-day-nav input[type=date]{background:var(--surface2);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:7px 11px;font-size:.85rem;font-family:var(--font)}
+.prog-bar{height:5px;background:var(--border);border-radius:3px;margin-top:6px;overflow:hidden}
+.prog-fill{height:100%;border-radius:3px;transition:width .4s}
+.sep{height:1px;background:var(--border);margin:16px 0}
+.empty-state{text-align:center;padding:40px 20px;color:var(--text3)}
+.empty-state .ei{font-size:2.2rem;margin-bottom:10px}
+.admin-only{display:none}.is-admin .admin-only{display:block}
+.backup-bar{background:var(--surface2);border-radius:8px;padding:10px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;font-size:.8rem;color:var(--text2)}
+.backup-bar b{color:var(--text)}
+#loadingOverlay{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:500;flex-direction:column;gap:16px}
+.spinner{width:36px;height:36px;border:3px solid var(--border2);border-top-color:var(--green);border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="loadingOverlay"><div class="spinner"></div><div style="color:var(--text2);font-size:.85rem">Initialisation…</div></div>
+
+<!-- LOGIN -->
+<div id="loginScreen" style="display:none">
+  <div class="login-box">
+    <div class="login-logo"><div class="brand">PharmaCash<span> Pro</span></div><div class="brand-sub">Gestion de trésorerie — Temps réel · Multi-sites</div></div>
+    <h2>Connexion</h2>
+    <div class="err-box" id="loginErr">Identifiant ou mot de passe incorrect.</div>
+    <div class="fg"><label>Identifiant</label><input type="text" id="loginUser" autocomplete="username" placeholder="votre identifiant"></div>
+    <div class="fg"><label>Mot de passe</label><input type="password" id="loginPass" autocomplete="current-password" placeholder="••••••••"></div>
+    <button class="btn btn-green btn-full" onclick="doLogin()">Se connecter</button>
+    <div style="margin-top:14px;font-size:.75rem;color:var(--text3);text-align:center">Admin par défaut : <b style="color:var(--text2)">admin</b> / <b style="color:var(--text2)">admin123</b></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appShell">
+  <header class="app-header">
+    <div class="hdr-left">
+      <div class="brand-sm">PharmaCash<span> Pro</span></div>
+      <div class="sync-status"><span class="sync-dot" id="syncDot"></span><span id="syncLabel">…</span></div>
+      <div class="date-chip" id="hdrDate"></div>
+    </div>
+    <div class="hdr-right">
+      <button class="btn btn-ghost btn-sm" onclick="openM('mBackup')" title="Sauvegardes">💾</button>
+      <div class="user-pill"><div class="uavatar" id="uAvatar"></div><div><div class="uname" id="uName"></div><div class="urole" id="uRole"></div></div></div>
+      <button class="btn btn-ghost btn-sm" onclick="doLogout()">Quitter</button>
+    </div>
+  </header>
+  <div class="app-body">
+    <nav class="sidebar">
+      <div class="nav-sec">Principal</div>
+      <div class="nav-item active" onclick="goTo('dashboard')"><span class="nav-icon">📊</span> Tableau de bord</div>
+      <div class="nav-item" onclick="goTo('recettes')"><span class="nav-icon">🧾</span> Recettes</div>
+      <div class="nav-item" onclick="goTo('versements')"><span class="nav-icon">💸</span> Versements</div>
+      <div class="nav-item" onclick="goTo('caisse')"><span class="nav-icon">🗂️</span> Clôture de caisse</div>
+      <div class="nav-item" onclick="goTo('banques')"><span class="nav-icon">🏦</span> Banques & MM</div>
+      <div class="nav-sec">Analyse</div>
+      <div class="nav-item" onclick="goTo('rapport')"><span class="nav-icon">📈</span> Rapport</div>
+      <div class="nav-sec admin-only">Administration</div>
+      <div class="nav-item admin-only" onclick="goTo('admin')"><span class="nav-icon">⚙️</span> Configuration</div>
+      <div class="nav-item admin-only" onclick="goTo('utilisateurs')"><span class="nav-icon">👥</span> Utilisateurs</div>
+    </nav>
+    <main class="app-main" id="appMain">
+      <!-- DASHBOARD -->
+      <div class="pg active" id="pg-dashboard">
+        <div class="pg-header"><div><div class="pg-title">Tableau de bord</div><div class="pg-sub" id="dbSub"></div></div><button class="btn btn-ghost btn-sm" onclick="renderDashboard()">↻</button></div>
+        <div class="backup-bar"><span>💾 Dernière sauvegarde : <b id="lastBackupLabel">—</b></span><button class="btn btn-ghost btn-sm" onclick="backupNow()">Sauvegarder maintenant</button></div>
+        <div class="stats-grid" id="dbStats"></div>
+        <div class="card"><div class="card-header"><span class="card-title">Soldes par établissement</span></div><div class="compte-cards" id="dbComptes"></div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="card"><div class="card-header"><span class="card-title">Recettes du jour</span><button class="btn btn-green btn-xs" onclick="goTo('recettes')">Voir tout</button></div><div class="tbl-wrap"><table><thead><tr><th>PDV</th><th>Canal</th><th>Montant</th></tr></thead><tbody id="dbRecTbody"></tbody></table></div></div>
+          <div class="card"><div class="card-header"><span class="card-title">Versements récents</span><button class="btn btn-blue btn-xs" onclick="goTo('versements')">Voir tout</button></div><div class="tbl-wrap"><table><thead><tr><th>PDV</th><th>Type</th><th>Montant</th><th>Statut</th></tr></thead><tbody id="dbVerTbody"></tbody></table></div></div>
+        </div>
+      </div>
+      <!-- RECETTES -->
+      <div class="pg" id="pg-recettes">
+        <div class="pg-header"><div><div class="pg-title">Recettes journalières</div></div><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openSMSModal()">📲 SMS</button><button class="btn btn-green btn-sm" onclick="openRecetteModal()">+ Recette</button></div></div>
+        <div class="filters"><input type="date" id="fRDate" class="fi" onchange="renderRecettes()"><select id="fRPDV" class="fi" onchange="renderRecettes()"><option value="">Tous PDV</option></select><select id="fRCanal" class="fi" onchange="renderRecettes()"><option value="">Tous canaux</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fRDate','fRPDV','fRCanal');renderRecettes()">✕</button></div>
+        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>PDV</th><th>Canal</th><th>Type</th><th>Montant</th><th>Réf.</th><th>Saisi par</th><th></th></tr></thead><tbody id="recTbody"></tbody></table></div></div>
+      </div>
+      <!-- VERSEMENTS -->
+      <div class="pg" id="pg-versements">
+        <div class="pg-header"><div><div class="pg-title">Versements</div></div><button class="btn btn-green btn-sm" onclick="openVersModal()">+ Versement</button></div>
+        <div class="filters"><input type="date" id="fVDate" class="fi" onchange="renderVersements()"><select id="fVPDV" class="fi" onchange="renderVersements()"><option value="">Tous PDV</option></select><select id="fVType" class="fi" onchange="renderVersements()"><option value="">Tous types</option><option value="OM">Orange Money</option><option value="MTN">MTN MoMo</option><option value="WAVE">Wave</option><option value="MOOV">Moov Money</option><option value="CASH">Cash</option><option value="CHEQUE">Chèque</option><option value="VIREMENT">Virement</option></select><select id="fVStatut" class="fi" onchange="renderVersements()"><option value="">Tous statuts</option><option value="en attente">En attente</option><option value="reçu">Reçu</option><option value="confirmé">Confirmé</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fVDate','fVPDV','fVType','fVStatut');renderVersements()">✕</button></div>
+        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>PDV</th><th>Fréq.</th><th>Type</th><th>Compte dest.</th><th>Réf.</th><th>Montant</th><th>Statut</th><th>Saisi par</th><th></th></tr></thead><tbody id="verTbody"></tbody></table></div></div>
+      </div>
+      <!-- CAISSE -->
+      <div class="pg" id="pg-caisse">
+        <div class="pg-header"><div><div class="pg-title">Clôture de caisse — Principale</div></div><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="openCaisseModal()">+ Clôture</button><button class="btn btn-green btn-sm admin-only" onclick="validerToutesClot()">✓ Valider toutes</button></div></div>
+        <div class="tab-day-nav"><button class="btn btn-ghost btn-sm" onclick="caisseNavDay(-1)">←</button><input type="date" id="caisseDate" onchange="renderCaisse()"><button class="btn btn-ghost btn-sm" onclick="caisseNavDay(1)">→</button><button class="btn btn-ghost btn-sm" onclick="document.getElementById('caisseDate').value=today();renderCaisse()">Auj.</button></div>
+        <div class="summary-caisse" id="caisseSummary"></div>
+        <div class="caisse-grid" id="caisseGrid"></div>
+        <div class="card"><div class="card-header"><span class="card-title">Détail du jour</span></div><div class="tbl-wrap"><table><thead><tr><th>Vacation</th><th>Caissière</th><th>Machine</th><th>Cash versé</th><th>MM versé</th><th>Total versé</th><th>Écart</th><th>Statut</th><th>Validé par</th><th></th></tr></thead><tbody id="caisseTbody"></tbody></table></div></div>
+      </div>
+      <!-- BANQUES -->
+      <div class="pg" id="pg-banques">
+        <div class="pg-header"><div><div class="pg-title">Établissements financiers</div></div><button class="btn btn-green btn-sm" onclick="openMvtModal()">+ Mouvement</button></div>
+        <div class="compte-cards" id="bqComptes"></div>
+        <div class="card"><div class="card-header"><span class="card-title">Mouvements</span></div>
+          <div class="filters"><input type="date" id="fMDate" class="fi" onchange="renderMvts()"><select id="fMCompte" class="fi" onchange="renderMvts()"><option value="">Tous comptes</option></select><select id="fMType" class="fi" onchange="renderMvts()"><option value="">Tous types</option><option value="entrée">Entrées</option><option value="sortie">Sorties</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fMDate','fMCompte','fMType');renderMvts()">✕</button></div>
+          <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Compte</th><th>Type</th><th>Libellé</th><th>Réf.</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="mvtTbody"></tbody></table></div>
+        </div>
+      </div>
+      <!-- RAPPORT -->
+      <div class="pg" id="pg-rapport">
+        <div class="pg-header"><div><div class="pg-title">Rapport de trésorerie</div></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+            <select class="fi" id="rPeriode" onchange="onPeriodeChange()" style="max-width:180px"><option value="jour">Aujourd'hui</option><option value="semaine" selected>Cette semaine</option><option value="mois">Ce mois</option><option value="custom">Personnalisé</option></select>
+            <div id="rCustomDates" style="display:none;gap:6px"><input type="date" id="rDebut" class="fi" onchange="renderRapport()" style="max-width:140px"><input type="date" id="rFin" class="fi" onchange="renderRapport()" style="max-width:140px"></div>
+          </div>
+        </div>
+        <div id="rapportContent"></div>
+      </div>
+      <!-- ADMIN -->
+      <div class="pg" id="pg-admin">
+        <div class="pg-header"><div class="pg-title">Configuration</div></div>
+        <div class="inner-tabs"><div class="inner-tab active" onclick="adminTab('pdv')">Points de vente</div><div class="inner-tab" onclick="adminTab('comptes')">Comptes financiers</div></div>
+        <div id="adm-pdv"><div class="card"><div class="card-header"><span class="card-title">Points de vente & Dépôts</span><button class="btn btn-green btn-sm" onclick="openPDVModal()">+ Ajouter</button></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Type</th><th>Adresse</th><th>Responsable</th><th>Périodicité</th><th>Compte défaut</th><th></th></tr></thead><tbody id="pdvTbody"></tbody></table></div></div></div>
+        <div id="adm-comptes" style="display:none"><div class="card"><div class="card-header"><span class="card-title">Établissements financiers</span><button class="btn btn-green btn-sm" onclick="openCompteModal()">+ Ajouter</button></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Catégorie</th><th>Opérateur</th><th>N° compte</th><th>Solde initial</th><th>Solde actuel</th><th></th></tr></thead><tbody id="cptTbody"></tbody></table></div></div></div>
+      </div>
+      <!-- UTILISATEURS -->
+      <div class="pg" id="pg-utilisateurs">
+        <div class="pg-header"><div class="pg-title">Utilisateurs</div><button class="btn btn-green btn-sm" onclick="openUserModal()">+ Ajouter</button></div>
+        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Login</th><th>Rôle</th><th>PDV</th><th>Dernière connexion</th><th>Statut</th><th></th></tr></thead><tbody id="userTbody"></tbody></table></div></div>
+      </div>
+    </main>
+  </div>
+  <div class="mobile-nav">
+    <div class="mnav-item active" onclick="goTo('dashboard')"><div class="mnav-icon">📊</div>Bord</div>
+    <div class="mnav-item" onclick="goTo('recettes')"><div class="mnav-icon">🧾</div>Recettes</div>
+    <div class="mnav-item" onclick="goTo('versements')"><div class="mnav-icon">💸</div>Versements</div>
+    <div class="mnav-item" onclick="goTo('caisse')"><div class="mnav-icon">🗂️</div>Caisse</div>
+    <div class="mnav-item" onclick="goTo('banques')"><div class="mnav-icon">🏦</div>Banques</div>
+  </div>
+</div>
+<!-- MODALS -->
+<div class="modal-ov" id="mRecette"><div class="modal"><div class="modal-hdr"><div class="modal-title">Nouvelle recette</div><button class="close-x" onclick="closeM('mRecette')">✕</button></div><div class="modal-body"><div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="mRDate"></div><div class="fg"><label>Heure</label><input type="time" id="mRHeure"></div></div><div class="fg2"><div class="fg"><label>PDV *</label><select id="mRPDV"></select></div><div class="fg"><label>Type</label><select id="mRType"><option value="vente comptoir">Vente comptoir</option><option value="ordonnance">Ordonnance</option><option value="grossiste">Grossiste</option><option value="autre">Autre</option></select></div></div><div class="fg2"><div class="fg"><label>Canal *</label><select id="mRCanal"><option value="CASH">💵 Cash</option><option value="OM">🟠 Orange Money</option><option value="MTN">🟡 MTN MoMo</option><option value="WAVE">🔵 Wave</option><option value="MOOV">🟢 Moov Money</option><option value="CHEQUE">📝 Chèque</option><option value="VIREMENT">🏦 Virement</option></select></div><div class="fg"><label>Montant *</label><input type="number" id="mRMontant" min="0"></div></div><div class="fg2"><div class="fg"><label>Réf. SMS</label><input type="text" id="mRRef"></div><div class="fg"><label>Saisi par</label><input type="text" id="mRSaisie" readonly></div></div><div class="fg1"><div class="fg"><label>Notes</label><textarea id="mRNotes" rows="2"></textarea></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mRecette')">Annuler</button><button class="btn btn-green" onclick="saveRecette()">Enregistrer</button></div></div></div>
+<div class="modal-ov" id="mSMS"><div class="modal"><div class="modal-hdr"><div class="modal-title">📲 Depuis SMS</div><button class="close-x" onclick="closeM('mSMS')">✕</button></div><div class="modal-body"><div class="fg1"><div class="fg"><label>Texte SMS</label><textarea id="smsTxt" rows="4" placeholder="Colle le SMS reçu…"></textarea></div></div><button class="btn btn-blue btn-sm" onclick="parseSMS()" style="margin-bottom:14px">⚡ Extraire</button><div id="smsResult" style="display:none"><div class="sep"></div><div class="fg2"><div class="fg"><label>PDV</label><select id="smsPDV"></select></div><div class="fg"><label>Date</label><input type="date" id="smsDate"></div></div><div class="fg2"><div class="fg"><label>Canal</label><select id="smsCanal"><option value="CASH">💵 Cash</option><option value="OM">🟠 OM</option><option value="MTN">🟡 MTN</option><option value="WAVE">🔵 Wave</option><option value="MOOV">🟢 Moov</option></select></div><div class="fg"><label>Montant</label><input type="number" id="smsMontant"></div></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mSMS')">Annuler</button><button class="btn btn-green" id="btnSaveSMS" style="display:none" onclick="saveSMSRecette()">Enregistrer</button></div></div></div>
+<div class="modal-ov" id="mVers"><div class="modal"><div class="modal-hdr"><div class="modal-title">Nouveau versement</div><button class="close-x" onclick="closeM('mVers')">✕</button></div><div class="modal-body"><div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="mVDate"></div><div class="fg"><label>PDV *</label><select id="mVPDV" onchange="onVPDVChange()"></select></div></div><div class="fg2"><div class="fg"><label>Fréquence</label><select id="mVFreq"><option value="quotidien">Quotidien</option><option value="hebdomadaire">Hebdomadaire</option></select></div><div class="fg"><label>Type *</label><select id="mVType"><option value="OM">🟠 Orange Money</option><option value="MTN">🟡 MTN MoMo</option><option value="WAVE">🔵 Wave</option><option value="MOOV">🟢 Moov Money</option><option value="CASH">💵 Cash</option><option value="CHEQUE">📝 Chèque</option><option value="VIREMENT">🏦 Virement</option></select></div></div><div class="fg2"><div class="fg"><label>Vers compte *</label><select id="mVCompte"></select></div><div class="fg"><label>Référence *</label><input type="text" id="mVRef"></div></div><div class="fg2"><div class="fg"><label>Montant *</label><input type="number" id="mVMontant" min="0"></div><div class="fg"><label>Statut</label><select id="mVStatut"><option value="en attente">En attente</option><option value="reçu">Reçu</option><option value="confirmé">Confirmé</option></select></div></div><div class="fg2"><div class="fg"><label>Saisi par</label><input type="text" id="mVSaisie" readonly></div><div class="fg"><label>Notes</label><input type="text" id="mVNotes"></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mVers')">Annuler</button><button class="btn btn-green" onclick="saveVersement()">Enregistrer</button></div></div></div>
+<div class="modal-ov" id="mMvt"><div class="modal"><div class="modal-hdr"><div class="modal-title">Mouvement financier</div><button class="close-x" onclick="closeM('mMvt')">✕</button></div><div class="modal-body"><div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="mMDate"></div><div class="fg"><label>Compte *</label><select id="mMCompte"></select></div></div><div class="fg2"><div class="fg"><label>Type</label><select id="mMType"><option value="entrée">Entrée</option><option value="sortie">Sortie</option><option value="virement interne">Virement interne</option></select></div><div class="fg"><label>Référence</label><input type="text" id="mMRef"></div></div><div class="fg2"><div class="fg"><label>Montant *</label><input type="number" id="mMMontant" min="0"></div><div class="fg"><label>Saisi par</label><input type="text" id="mMSaisie" readonly></div></div><div class="fg1"><div class="fg"><label>Libellé</label><textarea id="mMNotes" rows="2"></textarea></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mMvt')">Annuler</button><button class="btn btn-green" onclick="saveMvt()">Enregistrer</button></div></div></div>
+<div class="modal-ov" id="mCaisse"><div class="modal" style="max-width:600px"><div class="modal-hdr"><div class="modal-title">🗂️ Clôture de caisse</div><button class="close-x" onclick="closeM('mCaisse')">✕</button></div><div class="modal-body"><div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="mcDate"></div><div class="fg"><label>Vacation *</label><select id="mcVacation"><option value="Matin (07h-14h)">Matin 07h–14h</option><option value="Après-midi (14h-21h)">Après-midi 14h–21h</option><option value="Nuit (21h-07h)">Nuit 21h–07h</option><option value="Journée complète">Journée complète</option></select></div></div><div class="fg2"><div class="fg"><label>Caissière *</label><select id="mcCaissiere"></select></div><div class="fg"><label>Superviseur</label><input type="text" id="mcSuperviseur" readonly></div></div><div class="sep"></div><div style="font-size:.78rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">① Recette machine</div><div class="fg2"><div class="fg"><label>Cash machine</label><input type="number" id="mcMachineCash" min="0" oninput="calcCaisse()"></div><div class="fg"><label>🟠 OM machine</label><input type="number" id="mcMachineOM" min="0" oninput="calcCaisse()"></div></div><div class="fg2"><div class="fg"><label>🟡 MTN machine</label><input type="number" id="mcMachineMTN" min="0" oninput="calcCaisse()"></div><div class="fg"><label>🔵 Wave machine</label><input type="number" id="mcMachineWAVE" min="0" oninput="calcCaisse()"></div></div><div class="fg1"><div class="fg"><label>🟢 Moov machine</label><input type="number" id="mcMachineMOOV" min="0" oninput="calcCaisse()"></div></div><div class="sep"></div><div style="font-size:.78rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">② Versements réels</div><div class="fg2"><div class="fg"><label>Cash versé</label><input type="number" id="mcCashVerser" min="0" oninput="calcCaisse()"></div><div class="fg"><label>Réf. reçu cash</label><input type="text" id="mcRefCash"></div></div><div class="fg2"><div class="fg"><label>🟠 OM versé</label><input type="number" id="mcOMVerser" min="0" oninput="calcCaisse()"></div><div class="fg"><label>🟡 MTN versé</label><input type="number" id="mcMTNVerser" min="0" oninput="calcCaisse()"></div></div><div class="fg2"><div class="fg"><label>🔵 Wave versé</label><input type="number" id="mcWAVEVerser" min="0" oninput="calcCaisse()"></div><div class="fg"><label>🟢 Moov versé</label><input type="number" id="mcMOOVVerser" min="0" oninput="calcCaisse()"></div></div><div class="sep"></div><div id="caisseRecap" style="background:var(--surface2);border-radius:10px;padding:16px"><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px"><div><div style="font-size:.72rem;color:var(--text3)">Total machine</div><div id="rcTotalMachine" style="font-size:1.05rem;font-weight:800;color:var(--blue)">0 FCFA</div></div><div><div style="font-size:.72rem;color:var(--text3)">Total versé</div><div id="rcTotalVerse" style="font-size:1.05rem;font-weight:800;color:var(--green)">0 FCFA</div></div></div><div style="border-top:1px solid var(--border);padding-top:12px"><div style="font-size:.72rem;color:var(--text3);margin-bottom:4px">Écart (versé − machine)</div><div id="rcEcart" style="font-size:1.3rem;font-weight:800">0 FCFA</div><div id="rcEcartMsg" style="font-size:.78rem;margin-top:4px;color:var(--text2)"></div></div></div><div class="sep"></div><div class="fg1"><div class="fg"><label>Observations</label><textarea id="mcNotes" rows="2"></textarea></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mCaisse')">Annuler</button><button class="btn btn-green" onclick="saveCloture()">Enregistrer</button></div></div></div>
+<div class="modal-ov" id="mPDV"><div class="modal" style="max-width:560px"><div class="modal-hdr"><div class="modal-title" id="mPDVTitle">Nouveau PDV</div><button class="close-x" onclick="closeM('mPDV')">✕</button></div><div class="modal-body"><input type="hidden" id="mPDVId"><div class="fg2"><div class="fg"><label>Nom *</label><input type="text" id="mPDVNom"></div><div class="fg"><label>Type *</label><select id="mPDVType"><option value="principale">Principale</option><option value="depot">Dépôt</option></select></div></div><div class="fg2"><div class="fg"><label>Adresse</label><input type="text" id="mPDVAddr"></div><div class="fg"><label>Responsable</label><input type="text" id="mPDVResp"></div></div><div class="fg2"><div class="fg"><label>Téléphone</label><input type="text" id="mPDVTel"></div><div class="fg"><label>Compte destinataire défaut</label><select id="mPDVCompte"></select></div></div><div class="sep"></div><div style="font-size:.75rem;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Périodicité des versements</div><div class="fg2"><div class="fg"><label>Fréquence *</label><select id="mPDVFreq" onchange="onPDVFreqChange()"><option value="quotidien">Quotidien</option><option value="hebdomadaire">Hebdomadaire</option><option value="bimensuel">Bimensuel (2×/sem)</option><option value="mensuel">Mensuel</option></select></div><div class="fg"><label>Heure limite</label><input type="time" id="mPDVHeure"></div></div><div id="pdvJoursWrap" style="display:none;margin-bottom:10px"><div class="fg"><label>Jour(s)</label><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><label style="display:flex;align-items:center;gap:4px;font-size:.82rem;cursor:pointer;color:var(--text)"><input type="checkbox" value="1" class="pdv-jour"> Lun</label><label style="display:flex;align-items:center;gap:4px;font-size:.82rem;cursor:pointer;color:var(--text)"><input type="checkbox" value="2" class="pdv-jour"> Mar</label><label style="display:flex;align-items:center;gap:4px;font-size:.82rem;cursor:pointer;color:var(--text)"><input type="checkbox" value="3" class="pdv-jour"> Mer</label><label style="display:flex;align-items:center;gap:4px;font-size:.82rem;cursor:pointer;color:var(--text)"><input type="checkbox" value="4" class="pdv-jour"> Jeu</label><label style="display:flex;align-items:center;gap:4px;font-size:.82rem;cursor:pointer;color:var(--text)"><input type="checkbox" value="5" class="pdv-jour"> Ven</label><label style="display:flex;align-items:center;gap:4px;font-size:.82rem;cursor:pointer;color:var(--text)"><input type="checkbox" value="6" class="pdv-jour"> Sam</label><label style="display:flex;align-items:center;gap:4px;font-size:.82rem;cursor:pointer;color:var(--text)"><input type="checkbox" value="0" class="pdv-jour"> Dim</label></div></div></div><div id="pdvJourMoisWrap" style="display:none;margin-bottom:10px"><div class="fg"><label>Jour du mois</label><input type="number" id="mPDVJourMois" min="1" max="31" placeholder="ex: 5"></div></div><div class="fg1"><div class="fg"><label>Notes</label><textarea id="mPDVNotes" rows="2"></textarea></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mPDV')">Annuler</button><button class="btn btn-green" onclick="savePDV()">Enregistrer</button></div></div></div>
+<div class="modal-ov" id="mCompte"><div class="modal" style="max-width:560px"><div class="modal-hdr"><div class="modal-title" id="mCptTitle">Nouveau compte</div><button class="close-x" onclick="closeM('mCompte')">✕</button></div><div class="modal-body"><input type="hidden" id="mCptId"><div class="fg2"><div class="fg"><label>Nom *</label><input type="text" id="mCptNom"></div><div class="fg"><label>Catégorie *</label><select id="mCptCat" onchange="onCptCatChange()"><option value="mobile_money">Mobile Money</option><option value="banque">Banque</option><option value="caisse">Caisse espèces</option></select></div></div><div class="fg2"><div class="fg"><label>Opérateur / Banque</label><select id="mCptOp" onchange="onCptOpChange()"><optgroup label="Mobile Money"><option value="OM">🟠 Orange Money</option><option value="MTN">🟡 MTN MoMo</option><option value="WAVE">🔵 Wave</option><option value="MOOV">🟢 Moov Money</option></optgroup><optgroup label="Banques"><option value="BICICI">BICICI</option><option value="SGBCI">SGBCI</option><option value="ECOBANK">Ecobank</option><option value="UBA">UBA</option><option value="BNI">BNI</option><option value="NSIA">NSIA Banque</option><option value="SIB">SIB</option><option value="CORIS">Coris Bank</option><option value="BOA">BOA</option></optgroup><optgroup label="Autre"><option value="CASH">💵 Caisse espèces</option><option value="AUTRE">✏️ Autre…</option></optgroup></select></div><div class="fg"><label>Nom libre (si Autre)</label><input type="text" id="mCptOpLibre" style="display:none"></div></div><div class="fg2"><div class="fg"><label>N° compte / wallet</label><input type="text" id="mCptNum"></div><div class="fg"><label>Titulaire / Contact</label><input type="text" id="mCptContact"></div></div><div class="fg2"><div class="fg"><label>Solde initial (FCFA)</label><input type="number" id="mCptSolde" min="0"></div><div class="fg"><label>Couleur</label><select id="mCptColor"><option value="#00d68f">🟢 Vert</option><option value="#4d8af0">🔵 Bleu</option><option value="#f5a623">🟡 Ambre</option><option value="#f05050">🔴 Rouge</option><option value="#a855f7">🟣 Violet</option><option value="#22d3ee">🩵 Cyan</option><option value="#ff6b00">🟠 Orange</option><option value="#e879f9">🩷 Rose</option></select></div></div><div class="fg1"><div class="fg"><label>Notes</label><input type="text" id="mCptNotes"></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mCompte')">Annuler</button><button class="btn btn-green" onclick="saveCompte()">Enregistrer</button></div></div></div>
+<div class="modal-ov" id="mUser"><div class="modal"><div class="modal-hdr"><div class="modal-title" id="mUserTitle">Nouvel utilisateur</div><button class="close-x" onclick="closeM('mUser')">✕</button></div><div class="modal-body"><input type="hidden" id="mUserId"><div class="fg2"><div class="fg"><label>Nom complet *</label><input type="text" id="mUNom"></div><div class="fg"><label>Login *</label><input type="text" id="mULogin"></div></div><div class="fg2"><div class="fg"><label>Mot de passe *</label><input type="password" id="mUPass"></div><div class="fg"><label>Rôle *</label><select id="mURole"><option value="collaborateur">Collaborateur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur</option></select></div></div><div class="fg2"><div class="fg"><label>PDV assigné</label><select id="mUPDV"><option value="">Tous</option></select></div><div class="fg"><label>Téléphone</label><input type="text" id="mUTel"></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mUser')">Annuler</button><button class="btn btn-green" onclick="saveUser()">Enregistrer</button></div></div></div>
+<!-- BACKUP MODAL -->
+<div class="modal-ov" id="mBackup"><div class="modal" style="max-width:500px"><div class="modal-hdr"><div class="modal-title">💾 Sauvegardes</div><button class="close-x" onclick="closeM('mBackup')">✕</button></div><div class="modal-body">
+  <div style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:16px"><div style="font-size:.8rem;color:var(--text2);margin-bottom:8px"><b style="color:var(--text)">Statut</b></div><div style="display:flex;flex-direction:column;gap:6px;font-size:.82rem"><div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Dernière sauvegarde PC</span><b id="lastBackupPC">—</b></div><div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Dernière sauvegarde Dropbox</span><b id="lastBackupDB">—</b></div><div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Prochaine auto-sauvegarde</span><b id="nextBackup">—</b></div></div></div>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px"><button class="btn btn-green" onclick="backupPC()">⬇️ Télécharger sur PC (.json)</button><button class="btn btn-blue" onclick="backupDropbox()">☁️ Envoyer sur Dropbox</button><button class="btn btn-ghost" onclick="backupNow()">🔄 PC + Dropbox simultanément</button></div>
+  <div class="sep"></div>
+  <p style="font-size:.8rem;color:var(--text2);margin-bottom:8px">Restaurer depuis un fichier JSON :</p>
+  <button class="btn btn-ghost btn-sm" onclick="document.getElementById('importFile').click()">⬆️ Importer .json</button>
+  <input type="file" id="importFile" accept=".json" style="display:none" onchange="importerDonnees(event)">
+  <div class="sep"></div>
+  <div style="font-size:.72rem;color:var(--text3);line-height:1.7">⏰ Auto-sauvegarde : tous les soirs à <b style="color:var(--text2)">23h00</b> (page ouverte requise)<br>☁️ Dropbox : renseigne ton token dans <code>firebase-config.js</code></div>
+</div></div></div>
+
+<div class="toast" id="toast"></div>
+<script src="app.js" type="module"></script>
+</body>
+</html>
