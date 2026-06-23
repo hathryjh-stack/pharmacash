@@ -111,16 +111,12 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <div class="nav-item" onclick="goTo('versements')"><span class="nav-icon">💸</span> Versements</div>
       <div class="nav-item" onclick="goTo('caisse')"><span class="nav-icon">🗂️</span> Clôture de caisse</div>
       <div class="nav-item" onclick="goTo('banques')"><span class="nav-icon">🏦</span> Banques & MM</div>
-      <div class="nav-item" onclick="goTo('petitecaisse')"><span class="nav-icon">💰</span> Petite caisse</div>
       <div class="nav-sec">Analyse</div>
       <div class="nav-item" onclick="goTo('rapport')"><span class="nav-icon">📈</span> Rapport</div>
       <div class="nav-item" onclick="goTo('releves')"><span class="nav-icon">🖨️</span> Relevés & Export</div>
-      <div class="nav-item" onclick="goTo('caissiere')"><span class="nav-icon">👤</span> Suivi caissières</div>
       <div class="nav-sec admin-only">Administration</div>
       <div class="nav-item admin-only" onclick="goTo('admin')"><span class="nav-icon">⚙️</span> Configuration</div>
       <div class="nav-item admin-only" onclick="goTo('utilisateurs')"><span class="nav-icon">👥</span> Utilisateurs</div>
-      <div class="sep" style="margin:8px 16px"></div>
-      <div class="nav-item" onclick="refreshPage()" style="color:var(--cyan)"><span class="nav-icon">↻</span> Actualiser</div>
     </nav>
     <main class="app-main">
       <!-- DASHBOARD -->
@@ -177,43 +173,11 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           </div></div>
         <div id="rapportContent"></div>
       </div>
-      <!-- PETITE CAISSE -->
-      <div class="pg" id="pg-petitecaisse">
-        <div class="pg-header">
-          <div><div class="pg-title">💰 Petite caisse</div><div class="pg-sub">Approvisionnements et dépenses en espèces</div></div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <div style="font-size:.85rem;color:var(--text2)">Solde : <b id="pcSolde" id="pcSoldeEl" style="color:var(--green)">0 FCFA</b></div>
-            <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻</button>
-            <button class="btn btn-blue btn-sm" onclick="openPCModal('appro')">+ Approvisionner</button>
-            <button class="btn btn-red btn-sm" onclick="openPCModal('depense')">− Dépense</button>
-          </div>
-        </div>
-        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Solde après</th><th>Saisi par</th></tr></thead><tbody id="pcTbody"></tbody></table></div></div>
-      </div>
-      <!-- SUIVI CAISSIÈRES -->
-      <div class="pg" id="pg-caissiere">
-        <div class="pg-header">
-          <div><div class="pg-title">👤 Suivi caissières</div><div class="pg-sub">Performance par caissière sur la période</div></div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <select class="fi" id="scPeriode" onchange="onSCPeriodeChange()" style="max-width:160px"><option value="jour">Aujourd'hui</option><option value="semaine">Cette semaine</option><option value="mois" selected>Ce mois</option><option value="custom">Personnalisé</option></select>
-            <div id="scCustomDates" style="display:none;gap:6px"><input type="date" id="scDebut" class="fi" onchange="renderSuiviCaissiere()" style="max-width:140px"><input type="date" id="scFin" class="fi" onchange="renderSuiviCaissiere()" style="max-width:140px"></div>
-            <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻</button>
-          </div>
-        </div>
-        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Caissière</th><th>Machine</th><th>Cash versé</th><th>MM versé</th><th>Total versé</th><th>Écart</th><th>Vacations</th></tr></thead><tbody id="scTbody"></tbody></table></div></div>
-      </div>
-      <!-- RELEVÉS & EXPORT refonte v4.1 -->
+      <!-- RELEVÉS & EXPORT -->
       <div class="pg" id="pg-releves">
-        <div class="pg-header"><div><div class="pg-title">🖨️ Relevés périodiques</div><div class="pg-sub">3 types de relevés — PDV, Établissement financier, Transferts</div></div></div>
+        <div class="pg-header"><div><div class="pg-title">🖨️ Relevés périodiques</div><div class="pg-sub">Génère, imprime ou exporte un relevé complet</div></div></div>
         <div class="card">
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
-            <div class="fg" style="margin:0;min-width:180px"><label>Type de relevé</label>
-              <select id="relType" class="fi" onchange="onRelTypeChange()">
-                <option value="pdv">📍 Recettes & Versements par PDV</option>
-                <option value="compte">🏦 Relevé établissement financier</option>
-                <option value="transferts">🔄 Transferts MM → Banque</option>
-              </select>
-            </div>
             <div class="fg" style="margin:0;min-width:150px"><label>Période</label>
               <select id="relPeriode" class="fi" onchange="onRelPeriodeChange()"><option value="jour">Aujourd'hui</option><option value="semaine">Cette semaine</option><option value="mois" selected>Ce mois</option><option value="custom">Personnalisé</option></select>
             </div>
@@ -221,18 +185,19 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
               <div class="fg" style="margin:0"><label>Du</label><input type="date" id="relDebut" class="fi" onchange="genererReleve()" style="max-width:140px"></div>
               <div class="fg" style="margin:0"><label>Au</label><input type="date" id="relFin" class="fi" onchange="genererReleve()" style="max-width:140px"></div>
             </div>
-            <div id="relPDVRow" class="fg" style="margin:0;min-width:160px"><label>Point de vente</label><select id="relPDV" class="fi" onchange="genererReleve()"><option value="">Tous les PDV</option></select></div>
-            <div id="relCptRow" class="fg" style="margin:0;min-width:160px;display:none"><label>Compte financier</label><select id="relCompte" class="fi" onchange="genererReleve()"><option value="">Tous les comptes</option></select></div>
+            <div class="fg" style="margin:0;min-width:160px"><label>Point de vente</label><select id="relPDV" class="fi" onchange="genererReleve()"><option value="">Tous les PDV</option></select></div>
+            <div class="fg" style="margin:0;min-width:160px"><label>Compte financier</label><select id="relCompte" class="fi" onchange="genererReleve()"><option value="">Tous les comptes</option></select></div>
             <button class="btn btn-green btn-sm" onclick="genererReleve()" style="align-self:flex-end">⚡ Générer</button>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div class="releve-actions">
             <button class="btn btn-blue btn-sm" onclick="imprimerReleve()">🖨️ Imprimer / PDF</button>
             <button class="btn btn-ghost btn-sm" onclick="exporterReleveExcel()">📊 Export Excel (.csv)</button>
             <button class="btn btn-ghost btn-sm" onclick="exporterReleveWord()">📝 Export Word (.doc)</button>
-            <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻ Actualiser</button>
           </div>
         </div>
-        <div class="releve-preview" id="relevePreview"><div class="empty-state"><div class="ei">🖨️</div>Sélectionne le type de relevé et clique sur "Générer"</div></div>
+        <div class="releve-preview" id="relevePreview">
+          <div class="empty-state"><div class="ei">🖨️</div>Clique sur "Générer" pour afficher le relevé</div>
+        </div>
       </div>
       <!-- ADMIN -->
       <div class="pg" id="pg-admin">
@@ -258,7 +223,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
 </div>
 
 <!-- MODALS -->
-<div class="modal-ov" id="mRecette"><div class="modal"><div class="modal-hdr"><div class="modal-title">Nouvelle recette</div><button class="close-x" onclick="closeM('mRecette')">✕</button></div><div class="modal-body"><div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="mRDate"></div><div class="fg"><label>Heure</label><input type="time" id="mRHeure"></div></div><div class="fg2"><div class="fg"><label>PDV *</label><select id="mRPDV"></select></div><div class="fg"><label>Type</label><select id="mRType" onchange="onRTypeChange()"><option value="vente comptoir">Vente comptoir</option><option value="ordonnance">Ordonnance</option><option value="grossiste">Grossiste</option><option value="credit">À crédit (Principale uniquement)</option><option value="autre">Autre</option></select></div></div><div id="mRCreditNote" style="display:none;background:var(--amber-dim);border-radius:8px;padding:8px 12px;font-size:.8rem;color:var(--amber);margin-bottom:10px">💳 Recette à crédit — montant global, applicable uniquement à la Pharmacie Principale</div><div class="fg2"><div class="fg"><label>Canal paiement *</label><select id="mRCanal"><option value="CASH">💵 Cash</option><option value="OM">🟠 Orange Money</option><option value="MTN">🟡 MTN MoMo</option><option value="WAVE">🔵 Wave</option><option value="MOOV">🟢 Moov Money</option><option value="CHEQUE">📝 Chèque</option><option value="VIREMENT">🏦 Virement</option><option value="CREDIT">💳 À crédit</option></select></div><div class="fg"><label>Montant *</label><input type="number" id="mRMontant" min="0"></div></div><div class="fg2"><div class="fg"><label>Réf. SMS</label><input type="text" id="mRRef"></div><div class="fg"><label>Saisi par</label><input type="text" id="mRSaisie" readonly></div></div><div class="fg1"><div class="fg"><label>Notes</label><textarea id="mRNotes" rows="2"></textarea></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mRecette')">Annuler</button><button class="btn btn-green" onclick="saveRecette()">Enregistrer</button></div></div></div>
+<div class="modal-ov" id="mRecette"><div class="modal"><div class="modal-hdr"><div class="modal-title">Nouvelle recette</div><button class="close-x" onclick="closeM('mRecette')">✕</button></div><div class="modal-body"><div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="mRDate"></div><div class="fg"><label>Heure</label><input type="time" id="mRHeure"></div></div><div class="fg2"><div class="fg"><label>PDV *</label><select id="mRPDV"></select></div><div class="fg"><label>Type</label><select id="mRType"><option value="vente comptoir">Vente comptoir</option><option value="ordonnance">Ordonnance</option><option value="grossiste">Grossiste</option><option value="autre">Autre</option></select></div></div><div class="fg2"><div class="fg"><label>Canal paiement *</label><select id="mRCanal"><option value="CASH">💵 Cash</option><option value="OM">🟠 Orange Money</option><option value="MTN">🟡 MTN MoMo</option><option value="WAVE">🔵 Wave</option><option value="MOOV">🟢 Moov Money</option><option value="CHEQUE">📝 Chèque</option><option value="VIREMENT">🏦 Virement</option></select></div><div class="fg"><label>Montant *</label><input type="number" id="mRMontant" min="0"></div></div><div class="fg2"><div class="fg"><label>Réf. SMS</label><input type="text" id="mRRef"></div><div class="fg"><label>Saisi par</label><input type="text" id="mRSaisie" readonly></div></div><div class="fg1"><div class="fg"><label>Notes</label><textarea id="mRNotes" rows="2"></textarea></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mRecette')">Annuler</button><button class="btn btn-green" onclick="saveRecette()">Enregistrer</button></div></div></div>
 
 <div class="modal-ov" id="mSMS"><div class="modal"><div class="modal-hdr"><div class="modal-title">📲 Import SMS / WhatsApp</div><button class="close-x" onclick="closeM('mSMS')">✕</button></div><div class="modal-body">
   <p style="font-size:.82rem;color:var(--text2);margin-bottom:10px">Colle le message SMS ou WhatsApp reçu. Le montant, la date et le PDV sont détectés automatiquement.</p>
@@ -316,28 +281,6 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
 <!-- USER -->
 <div class="modal-ov" id="mUser"><div class="modal"><div class="modal-hdr"><div class="modal-title" id="mUserTitle">Nouvel utilisateur</div><button class="close-x" onclick="closeM('mUser')">✕</button></div><div class="modal-body"><input type="hidden" id="mUserId"><div class="fg2"><div class="fg"><label>Nom complet *</label><input type="text" id="mUNom"></div><div class="fg"><label>Login *</label><input type="text" id="mULogin"></div></div><div class="fg2"><div class="fg"><label>Mot de passe *</label><div style="position:relative"><input type="password" id="mUPass" style="padding-right:42px;width:100%"><button type="button" onclick="var i=document.getElementById('mUPass');i.type=i.type==='password'?'text':'password'" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8891b0;font-size:1.1rem;padding:0;line-height:1">👁</button></div></div><div class="fg"><label>Rôle *</label><select id="mURole"><option value="collaborateur">Collaborateur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur</option></select></div></div><div class="fg2"><div class="fg"><label>PDV assigné</label><select id="mUPDV"><option value="">Tous</option></select></div><div class="fg"><label>Téléphone</label><input type="text" id="mUTel"></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mUser')">Annuler</button><button class="btn btn-green" onclick="saveUser()">Enregistrer</button></div></div></div>
 
-<!-- PETITE CAISSE MODAL -->
-<div class="modal-ov" id="mPetiteCaisse"><div class="modal"><div class="modal-hdr"><div class="modal-title" id="pcMTitle">Petite caisse</div><button class="close-x" onclick="closeM('mPetiteCaisse')">✕</button></div><div class="modal-body">
-  <input type="hidden" id="pcMType">
-  <div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="pcMDate"></div><div class="fg"><label>Montant (FCFA) *</label><input type="number" id="pcMMontant" min="0" placeholder="0"></div></div>
-  <div class="fg2"><div class="fg"><label>Libellé *</label><input type="text" id="pcMLibelle" placeholder="Description de la dépense ou appro…"></div>
-  <div class="fg"><label>Catégorie</label>
-    <select id="pcMCategorie">
-      <option value="approvisionnement">Approvisionnement</option>
-      <option value="fournitures">Fournitures bureau</option>
-      <option value="transport">Transport</option>
-      <option value="restauration">Restauration</option>
-      <option value="entretien">Entretien / nettoyage</option>
-      <option value="communication">Communication</option>
-      <option value="autre">Autre</option>
-    </select>
-  </div></div>
-  <div id="pcCaisseSource" style="display:none"><div class="fg"><label>Débiter depuis</label><select id="pcCaisseId"></select></div></div>
-  <div class="fg"><label>Saisi par</label><input type="text" id="pcMSaisie" readonly></div>
-</div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mPetiteCaisse')">Annuler</button><button class="btn btn-green" onclick="savePCMouvement()">Enregistrer</button></div></div></div>
-
-<!-- TOAST -->
-<div class="toast" id="toast"></div>
 <!-- BACKUP -->
 <div class="modal-ov" id="mBackup"><div class="modal" style="max-width:500px"><div class="modal-hdr"><div class="modal-title">💾 Sauvegardes</div><button class="close-x" onclick="closeM('mBackup')">✕</button></div><div class="modal-body">
   <div style="background:var(--surface2);border-radius:8px;padding:14px;margin-bottom:16px"><div style="font-size:.8rem;margin-bottom:8px"><b>Statut</b></div><div style="display:flex;flex-direction:column;gap:6px;font-size:.82rem"><div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Dernière sauvegarde PC</span><b id="lastBackupPC">—</b></div><div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Dernière sauvegarde Dropbox</span><b id="lastBackupDB">—</b></div><div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Prochaine auto-sauvegarde</span><b id="nextBackup">—</b></div></div></div>
@@ -353,5 +296,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
   <div class="sep"></div><div style="font-size:.72rem;color:var(--text3);line-height:1.7">⏰ Auto-sauvegarde à 23h00 chaque soir (page ouverte requise)<br>☁️ Dropbox : configure ton token dans app.js</div>
 </div></div></div>
 
+<div class="toast" id="toast"></div>
+<script src="app.js" type="module"></script>
 </body>
 </html>
