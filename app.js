@@ -1394,6 +1394,12 @@ function openPCModal(type){
   document.getElementById('pcMLibelle').value='';
   document.getElementById('pcMCategorie').value=type==='appro'?'approvisionnement':'autre';
   document.getElementById('pcMSaisie').value=currentUser.nom;
+  document.getElementById('pcResponsable').value='';
+  document.getElementById('pcBenefNom').value='';
+  document.getElementById('pcBenefCNI').value='';
+  document.getElementById('pcBenefTel').value='';
+  document.getElementById('pcBenefType').value='Particulier';
+  document.getElementById('pcModePaiement').value='Espèces';
   const caisseSource=document.getElementById('pcCaisseSource');
   const caisseId=document.getElementById('pcCaisseId');
   if(type==='appro'){
@@ -1406,6 +1412,24 @@ function openPCModal(type){
   openM('mPetiteCaisse');
 }
 window.openPCModal=openPCModal;
+
+function onPCCategorieChange(){
+  const sel=document.getElementById('pcMCategorie');
+  if(sel.value==='__custom__'){
+    const n=prompt('Nouvelle catégorie :');
+    if(n&&n.trim()){
+      const opt=document.createElement('option');
+      opt.value=n.trim().toLowerCase();
+      opt.textContent=n.trim();
+      opt.selected=true;
+      sel.insertBefore(opt,sel.lastElementChild);
+      sel.value=opt.value;
+    } else {
+      sel.value='autre';
+    }
+  }
+}
+window.onPCCategorieChange=onPCCategorieChange;
 
 async function savePCMouvement(){
   const type=document.getElementById('pcMType').value;
