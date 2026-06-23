@@ -1225,7 +1225,15 @@ function openPCModal(type){
   document.getElementById('pcMLibelle').value='';
   document.getElementById('pcMCategorie').value=type==='appro'?'approvisionnement':'autre';
   document.getElementById('pcMSaisie').value=currentUser.nom;
-  document.getElementById('pcCaisseSource').style.display=type==='appro'?'block':'none';
+  const caisseSource=document.getElementById('pcCaisseSource');
+  const caisseId=document.getElementById('pcCaisseId');
+  if(type==='appro'){
+    caisseSource.style.display='block';
+    if(caisseId)caisseId.innerHTML=comptes.filter(c=>c.actif!==false)
+      .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  } else {
+    caisseSource.style.display='none';
+  }
   openM('mPetiteCaisse');
 }
 window.openPCModal=openPCModal;
