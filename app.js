@@ -961,112 +961,133 @@ window.saveTransfert=saveTransfert;
 // ══════════════════════════════════════════════════════
 // REÇU DE CAISSE — Petite caisse & Grande caisse (v4.1)
 // ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════
+// REÇU DE CAISSE — Format A5, aperçu modale, PDF (v4.1)
+// ══════════════════════════════════════════════════════
 function genererRecuCaisse(data){
   const numRecu='RC-'+Date.now().toString(36).toUpperCase();
-  const w=window.open('','_blank');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>Reçu de caisse — ${PHARMACIE_NOM}</title>
+  const htmlRecu=`
+  <div id="recuA5" style="width:148mm;min-height:210mm;font-family:Arial,sans-serif;font-size:10pt;color:#111;padding:12mm;box-sizing:border-box;background:#fff">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #00C47A;padding-bottom:8px;margin-bottom:10px">
+      <div>
+        <div style="font-size:1rem;font-weight:800;color:#00C47A">${PHARMACIE_NOM}</div>
+        <div style="font-size:.72rem;color:#666">Reçu de caisse</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:.85rem;font-weight:700">REÇU DE CAISSE</div>
+        <div style="font-size:.7rem;color:#666">N° ${numRecu}</div>
+        <div style="font-size:.7rem;color:#666">Date : ${fmtD(data.date)} ${data.heure||''}</div>
+        <div style="font-size:.7rem;color:#666">Type : ${data.typeRecu||'Dépense'}</div>
+      </div>
+    </div>
+    <div style="background:#f0faf5;border:2px solid #00C47A;border-radius:6px;padding:8px;text-align:center;margin-bottom:10px">
+      <div style="font-size:.65rem;color:#666;text-transform:uppercase">Montant</div>
+      <div style="font-size:1.4rem;font-weight:800;color:#00C47A">${fmt(data.montant)} ${DEVISE}</div>
+      <div style="font-size:.72rem;color:#444;font-style:italic">${nombreEnLettres(data.montant)} francs CFA</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:.75rem;margin-bottom:8px">
+      <tr><td style="padding:3px 6px;color:#666;width:35%">Libellé</td><td style="padding:3px 6px;font-weight:600">${data.libelle||'—'}</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:3px 6px;color:#666">Catégorie</td><td style="padding:3px 6px">${data.categorie||'—'}</td></tr>
+      <tr><td style="padding:3px 6px;color:#666">Mode paiement</td><td style="padding:3px 6px">${data.modePaiement||'Espèces'}</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:3px 6px;color:#666">Référence</td><td style="padding:3px 6px">${data.ref||'—'}</td></tr>
+      <tr><td style="padding:3px 6px;color:#666">Caisse</td><td style="padding:3px 6px">${data.caisse||'Petite caisse'}</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:3px 6px;color:#666">Responsable</td><td style="padding:3px 6px;font-weight:600">${data.responsable||'—'}</td></tr>
+    </table>
+    <div style="border:1px solid #eee;border-radius:6px;padding:6px 8px;margin-bottom:10px">
+      <div style="font-size:.65rem;color:#666;text-transform:uppercase;font-weight:700;margin-bottom:4px">Bénéficiaire</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.75rem">
+        <tr><td style="padding:2px 4px;color:#666;width:35%">Nom / Société</td><td style="padding:2px 4px;font-weight:600">${data.benef_nom||'—'}</td></tr>
+        <tr><td style="padding:2px 4px;color:#666">Type</td><td style="padding:2px 4px">${data.benef_type||'Particulier'}</td></tr>
+        <tr><td style="padding:2px 4px;color:#666">CNI / Identifiant</td><td style="padding:2px 4px">${data.benef_cni||'—'}</td></tr>
+        <tr><td style="padding:2px 4px;color:#666">Téléphone</td><td style="padding:2px 4px">${data.benef_tel||'—'}</td></tr>
+      </table>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:14px">
+      <div style="border-top:1px solid #ccc;padding-top:6px;text-align:center">
+        <div style="font-size:.62rem;color:#666;text-transform:uppercase">Responsable caisse</div>
+        <div style="height:35px"></div>
+        <div style="font-size:.65rem;color:#444;border-top:1px dotted #ccc;padding-top:3px">${data.responsable||'___________'}</div>
+      </div>
+      <div style="border-top:1px solid #ccc;padding-top:6px;text-align:center">
+        <div style="font-size:.62rem;color:#666;text-transform:uppercase">Bénéficiaire</div>
+        <div style="height:35px"></div>
+        <div style="font-size:.65rem;color:#444;border-top:1px dotted #ccc;padding-top:3px">${data.benef_nom||'___________'}</div>
+      </div>
+      <div style="border-top:1px solid #ccc;padding-top:6px;text-align:center">
+        <div style="font-size:.62rem;color:#666;text-transform:uppercase">Pharmacien Titulaire</div>
+        <div style="height:35px"></div>
+        <div style="font-size:.65rem;color:#444;border-top:1px dotted #ccc;padding-top:3px">Dr HATHRY J. Hubert</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:.6rem;color:#999;text-align:center;border-top:1px solid #eee;padding-top:6px">
+      PharmaCash Pro — ${new Date().toLocaleString('fr-FR')} — N° ${numRecu}
+    </div>
+  </div>`;
+
+  // Affiche dans une modale d'aperçu
+  let modal=document.getElementById('mRecuCaisse');
+  if(!modal){
+    modal=document.createElement('div');
+    modal.id='mRecuCaisse';
+    modal.className='modal-ov';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML=`<div class="modal" style="max-width:600px;max-height:90vh;overflow-y:auto">
+    <div class="modal-hdr">
+      <div class="modal-title">🧾 Aperçu du reçu</div>
+      <button class="close-x" onclick="document.getElementById('mRecuCaisse').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body" style="background:#e5e5e5;padding:20px;display:flex;justify-content:center">
+      ${htmlRecu}
+    </div>
+    <div class="modal-ftr" style="gap:8px">
+      <button class="btn btn-ghost" onclick="document.getElementById('mRecuCaisse').classList.remove('open')">Fermer</button>
+      <button class="btn btn-blue" onclick="imprimerRecuCaisse()">🖨️ Imprimer</button>
+      <button class="btn btn-green" onclick="telechargerRecuPDF()">⬇️ Télécharger PDF</button>
+    </div>
+  </div>`;
+  modal.classList.add('open');
+  window._recuHTML=htmlRecu;
+  window._recuNum=numRecu;
+}
+window.genererRecuCaisse=genererRecuCaisse;
+
+function imprimerRecuCaisse(){
+  const w=window.open('','_blank','width=600,height=800');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reçu</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;font-size:11pt;color:#111;padding:20px}
-    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #00C47A;padding-bottom:12px;margin-bottom:16px}
-    .pharma-name{font-size:1.2rem;font-weight:800;color:#00C47A}
-    .doc-title{font-size:1rem;font-weight:700;text-align:right}
-    .doc-num{font-size:.8rem;color:#666;text-align:right}
-    .section{margin-bottom:14px}
-    .section-title{font-size:.75rem;text-transform:uppercase;color:#666;font-weight:700;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:4px}
-    .row{display:flex;gap:20px;margin-bottom:6px}
-    .field{flex:1}
-    .label{font-size:.7rem;color:#999;text-transform:uppercase}
-    .value{font-size:.95rem;font-weight:600;color:#111;border-bottom:1px solid #ddd;padding-bottom:2px;min-height:20px}
-    .montant-box{background:#f0faf5;border:2px solid #00C47A;border-radius:8px;padding:12px;text-align:center;margin:14px 0}
-    .montant-label{font-size:.75rem;color:#666;text-transform:uppercase}
-    .montant-val{font-size:1.6rem;font-weight:800;color:#00C47A}
-    .montant-lettres{font-size:.82rem;color:#444;font-style:italic;margin-top:4px}
-    .signatures{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:30px}
-    .sig-box{border-top:1px solid #ccc;padding-top:8px;text-align:center}
-    .sig-label{font-size:.72rem;color:#666;text-transform:uppercase}
-    .sig-space{height:50px}
-    .footer{margin-top:20px;font-size:.68rem;color:#999;text-align:center;border-top:1px solid #eee;padding-top:8px}
-    @media print{body{padding:10px}}
+    @page{size:A5;margin:0}
+    body{margin:0;padding:0;background:#fff}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
   </style></head><body>
-  <div class="header">
-    <div>
-      <div class="pharma-name">${PHARMACIE_NOM}</div>
-      <div style="font-size:.78rem;color:#666">Reçu de caisse</div>
-    </div>
-    <div>
-      <div class="doc-title">REÇU DE CAISSE</div>
-      <div class="doc-num">N° ${numRecu}</div>
-      <div class="doc-num">Date : ${fmtD(data.date)} ${data.heure||''}</div>
-      <div class="doc-num">Type : ${data.typeRecu||'Dépense'}</div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Détails de l'opération</div>
-    <div class="row">
-      <div class="field"><div class="label">Libellé</div><div class="value">${data.libelle||'—'}</div></div>
-      <div class="field"><div class="label">Catégorie</div><div class="value">${data.categorie||'—'}</div></div>
-    </div>
-    <div class="row">
-      <div class="field"><div class="label">Mode de paiement</div><div class="value">${data.modePaiement||'Espèces'}</div></div>
-      <div class="field"><div class="label">Référence</div><div class="value">${data.ref||'—'}</div></div>
-    </div>
-  </div>
-
-  <div class="montant-box">
-    <div class="montant-label">Montant</div>
-    <div class="montant-val">${fmt(data.montant)} ${DEVISE}</div>
-    <div class="montant-lettres">${nombreEnLettres(data.montant)} francs CFA</div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Bénéficiaire</div>
-    <div class="row">
-      <div class="field"><div class="label">Nom & Prénom / Société</div><div class="value">${data.benef_nom||'—'}</div></div>
-      <div class="field"><div class="label">Type</div><div class="value">${data.benef_type||'Particulier'}</div></div>
-    </div>
-    <div class="row">
-      <div class="field"><div class="label">CNI / Identifiant</div><div class="value">${data.benef_cni||'—'}</div></div>
-      <div class="field"><div class="label">Téléphone</div><div class="value">${data.benef_tel||'—'}</div></div>
-    </div>
-  </div>
-
-  <div class="section">
-    <div class="section-title">Responsable</div>
-    <div class="row">
-      <div class="field"><div class="label">Responsable de la dépense</div><div class="value">${data.responsable||'—'}</div></div>
-      <div class="field"><div class="label">Caisse concernée</div><div class="value">${data.caisse||'Petite caisse'}</div></div>
-    </div>
-  </div>
-
-  <div class="signatures">
-    <div class="sig-box">
-      <div class="sig-label">Responsable caisse</div>
-      <div class="sig-space"></div>
-      <div style="font-size:.75rem;color:#444">${data.responsable||'_______________'}</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-label">Bénéficiaire</div>
-      <div class="sig-space"></div>
-      <div style="font-size:.75rem;color:#444">${data.benef_nom||'_______________'}</div>
-    </div>
-    <div class="sig-box">
-      <div class="sig-label">Pharmacien Titulaire</div>
-      <div class="sig-space"></div>
-      <div style="font-size:.75rem;color:#444">Dr HATHRY Jean Hubert</div>
-    </div>
-  </div>
-
-  <div class="footer">
-    Document généré par PharmaCash Pro — ${new Date().toLocaleString('fr-FR')} — N° ${numRecu}
-  </div>
-  <script>window.onload=()=>window.print()<\/script>
+  ${window._recuHTML}
+  <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),1000)}<\/script>
   </body></html>`);
   w.document.close();
 }
-window.genererRecuCaisse=genererRecuCaisse;
+window.imprimerRecuCaisse=imprimerRecuCaisse;
+
+async function telechargerRecuPDF(){
+  // Utilise l'API d'impression du navigateur pour générer un PDF
+  const w=window.open('','_blank','width=600,height=800');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reçu — ${window._recuNum}</title>
+  <style>
+    @page{size:A5;margin:0}
+    body{margin:0;padding:0;background:#fff}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body>
+  ${window._recuHTML}
+  <script>
+    window.onload=()=>{
+      window.document.title='Recu_${window._recuNum}';
+      window.print();
+    }
+  <\/script>
+  </body></html>`);
+  w.document.close();
+  toast('Dans la fenêtre d\'impression → choisir "Enregistrer en PDF"');
+}
+window.telechargerRecuPDF=telechargerRecuPDF;
 
 // Conversion montant en lettres (FCFA)
 function nombreEnLettres(n){
