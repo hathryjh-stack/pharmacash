@@ -1,15 +1,17 @@
 // ═══════════════════════════════════════════════════════
-// PHARMACASH PRO v4.0 — app.js
+// PHARMACASH PRO v4.1 — app.js
 // Pharmacie Saint Raphaël de M'Bengué
 // Firebase Firestore + LocalStorage fallback
-// Nouvelles fonctionnalités v4 :
-//   1. Établissements financiers libres
-//   2. Import SMS/WhatsApp tous dépôts
-//   3. Journal mouvements complet
-//   4. Relevés périodiques → Print/PDF/Excel/Word
-//   5. Badge Disponible (banque) vs En transit (MM)
-//   6. Transfert direct MM → Banque
-//   7. Versements multiples par dépôt
+// Corrections v4.1 :
+//   1. Total versement temps réel (oninput+onchange)
+//   2. Parseur SMS montant : 178.300 → 178300
+//   3. Parseur SMS PDV : détection phonétique+accents
+//   4. Anti-doublons recettes/versements
+//   5. Bouton Refresh sur chaque page
+//   6. Rapports & Relevés refonte complète (3 types)
+//   7. Type recette "À crédit" (Principale uniquement)
+//   8. Module Petite caisse
+//   9. Suivi cash par caissière + rapports
 // ═══════════════════════════════════════════════════════
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
@@ -24,9 +26,9 @@ const FIREBASE_CONFIG = {
   projectId:         "pharmacash-pro-fef79",
   storageBucket:     "pharmacash-pro-fef79.firebasestorage.app",
   messagingSenderId: "837693602631",
-  appId:             "1:837693602631:web:57a2f9e863e9b425ac2a62"
+  appId:             ":837693602631:web:57a2f9e863e9b425ac2a62"
 };
-const sl.u.AGnPGTpMkkwOnzMS-_cINzyvZzfqDJ7KktuoSS4eS2fMsC05B0NJhEj1OyqUCp7mqqWezoqQT3WYc0CVBb1AgX_qjZlpJY0hc2v2JLc7SrpCHsTTipKGsrMWXP    = "sl.u.AGk165Fjptcts0eiQbNgBL5qqDPFYp4rx-gKp2wWvFywN-du6lzGcgMq_ft3CMY83qP5hM59tnBsG2zESuERvCA9RmrcyLi1zYUQewb_4thI4yvILJfAcr79LOu.AGnz0v5S7gLnsteZR-GbbkMJtSbBeuA75-bVQ5OcVh_gpGk1TCyYWq2JusYPk_Q3BZSBb6Br_uxPxbL_9G-c7Uk2i27FZ1cy0j_RK-61wDK3sVii3gIaJ2g3B8";
+const DROPBOX_TOKEN    = "sl.u.AGnZUIxXGQ_EsX2ofRqBhakyUKfmrnFDJ-ZDyBMBL5yQuSxe4TXwPH3APFVg_U5QsmCWwn15rT6kO_HgKELpUM-U8rHGO_u3Ugs5tvoFFeVR-3sYWPQinscv8r";
 const DROPBOX_FOLDER   = "/PharmaCash/sauvegardes";
 const AUTO_BACKUP_HOUR = 23;
 const PHARMACIE_NOM    = "Pharmacie Saint Raphaël de M'Bengué";
@@ -83,6 +85,7 @@ let versements = LS.g('versements') || [];
 let mvts       = LS.g('mvts')       || [];
 let clotures   = LS.g('clotures')   || [];
 let transferts = LS.g('transferts') || []; // NEW v4 — transferts MM→Banque
+let petiteCaisse = LS.g('petiteCaisse') || []; // NEW v4.1 — petite caisse
 let currentUser = null;
 let backupTimer = null;
 
@@ -106,12 +109,14 @@ async function fbDel(col,id){
 }
 async function loadAll(){
   sync('syncing','Chargement…');
-  const [fu,fp,fc,fr,fv,fm,fcl,ft]=await Promise.all([
+  const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc]=await Promise.all([
     fbLoad('users'),fbLoad('pdvs'),fbLoad('comptes'),fbLoad('recettes'),
-    fbLoad('versements'),fbLoad('mvts'),fbLoad('clotures'),fbLoad('transferts')
+    fbLoad('versements'),fbLoad('mvts'),fbLoad('clotures'),fbLoad('transferts'),
+    fbLoad('petiteCaisse')
   ]);
   if(fu)users=fu; if(fp)pdvs=fp; if(fc)comptes=fc; if(fr)recettes=fr;
   if(fv)versements=fv; if(fm)mvts=fm; if(fcl)clotures=fcl; if(ft)transferts=ft;
+  if(fpc)petiteCaisse=fpc;
   saveLocal(); sync('ok','🔴 Temps réel');
 }
 function subscribeAll(){
@@ -135,7 +140,7 @@ function refreshPg(name){
 function saveLocal(){
   LS.s('users',users);LS.s('pdvs',pdvs);LS.s('comptes',comptes);
   LS.s('recettes',recettes);LS.s('versements',versements);LS.s('mvts',mvts);
-  LS.s('clotures',clotures);LS.s('transferts',transferts);
+  LS.s('clotures',clotures);LS.s('transferts',transferts);LS.s('petiteCaisse',petiteCaisse);
 }
 async function saveItem(col,item){ saveLocal(); if(useFirebase){sync('syncing','Sync…');await fbSave(col,item.id,item);sync('ok','🔴 Temps réel');} }
 async function delItem(col,id){ saveLocal(); if(useFirebase){await fbDel(col,id);} }
@@ -156,14 +161,14 @@ function backupPC(){
   updateBackupUI(); toast('Sauvegarde PC ✓');
 }
 async function backupDropbox(){
-  if(!sl.u.AGnPGTpMkkwOnzMS-_cINzyvZzfqDJ7KktuoSS4eS2fMsC05B0NJhEj1OyqUCp7mqqWezoqQT3WYc0CVBb1AgX_qjZlpJY0hc2v2JLc7SrpCHsTTipKGsrMWXP||sl.u.AGnPGTpMkkwOnzMS-_cINzyvZzfqDJ7KktuoSS4eS2fMsC05B0NJhEj1OyqUCp7mqqWezoqQT3WYc0CVBb1AgX_qjZlpJY0hc2v2JLc7SrpCHsTTipKGsrMWXP.startsWith('COLLE')){toast('Token Dropbox non configuré','err');return;}
+  if(!DROPBOX_TOKEN||DROPBOX_TOKEN.startsWith('COLLE')){toast('Token Dropbox non configuré','err');return;}
   try{
     sync('syncing','Dropbox…');
     const ts=new Date().toTimeString().slice(0,5).replace(':','h');
     const path=`${DROPBOX_FOLDER}/pharmacash_${today()}_${ts}.json`;
     const resp=await fetch('https://content.dropboxapi.com/2/files/upload',{
       method:'POST',
-      headers:{'Authorization':`Bearer ${sl.u.AGnPGTpMkkwOnzMS-_cINzyvZzfqDJ7KktuoSS4eS2fMsC05B0NJhEj1OyqUCp7mqqWezoqQT3WYc0CVBb1AgX_qjZlpJY0hc2v2JLc7SrpCHsTTipKGsrMWXP}`,
+      headers:{'Authorization':`Bearer ${DROPBOX_TOKEN}`,
         'Dropbox-API-Arg':JSON.stringify({path,mode:'overwrite',autorename:false}),
         'Content-Type':'application/octet-stream'},
       body:buildBlob()
@@ -305,7 +310,7 @@ function startApp(){
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','admin','utilisateurs'];
+const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','petitecaisse','caissiere','admin','utilisateurs'];
 function goTo(name){
   PAGES.forEach(p=>document.getElementById('pg-'+p)?.classList.remove('active'));
   document.getElementById('pg-'+name)?.classList.add('active');
@@ -313,16 +318,18 @@ function goTo(name){
     const t=n.textContent.trim().toLowerCase();
     n.classList.toggle('active',
       (name==='dashboard'&&t.includes('tableau'))||(name==='recettes'&&t.includes('recette'))||
-      (name==='versements'&&t.includes('versement'))||(name==='caisse'&&t.includes('caisse'))||
+      (name==='versements'&&t.includes('versement'))||(name==='caisse'&&t.includes('clôture'))||
       (name==='banques'&&t.includes('banques'))||(name==='rapport'&&t.includes('rapport'))||
-      (name==='releves'&&t.includes('relev'))||(name==='admin'&&t.includes('config'))||
+      (name==='releves'&&t.includes('relevé'))||(name==='petitecaisse'&&t.includes('petite'))||
+      (name==='caissiere'&&t.includes('caissière'))||(name==='admin'&&t.includes('config'))||
       (name==='utilisateurs'&&t.includes('utilis')));
   });
   const mm=['dashboard','recettes','versements','caisse','banques'];
   document.querySelectorAll('.mnav-item').forEach((n,i)=>n.classList.toggle('active',mm[i]===name));
   ({dashboard:renderDashboard,recettes:renderRecettes,versements:renderVersements,
     caisse:renderCaisse,banques:renderBanques,rapport:renderRapport,
-    releves:renderReleves,admin:renderAdmin,utilisateurs:renderUsers})[name]?.();
+    releves:renderReleves,petitecaisse:renderPetiteCaisse,
+    caissiere:renderSuiviCaissiere,admin:renderAdmin,utilisateurs:renderUsers})[name]?.();
 }
 window.goTo=goTo;
 
@@ -420,6 +427,9 @@ async function saveRecette(){
   const date=document.getElementById('mRDate').value,pdv=document.getElementById('mRPDV').value,
     canal=document.getElementById('mRCanal').value,montant=parseFloat(document.getElementById('mRMontant').value);
   if(!date||!pdv||!canal||!montant){toast('Champs obligatoires manquants','err');return;}
+  // Anti-doublons
+  const doublon=recettes.find(r=>r.pdv===pdv&&r.date===date&&Math.abs((r.montant||0)-montant)<montant*0.01);
+  if(doublon&&!confirm(`⚠️ Doublon possible !\nUne recette similaire existe déjà pour ce PDV à cette date :\n${fmtD(doublon.date)} — ${fmt(doublon.montant)} ${DEVISE}\n\nConfirmer quand même ?`))return;
   const item={id:uid(),date,heure:document.getElementById('mRHeure').value,pdv,
     type:document.getElementById('mRType').value,canal,montant,
     ref:document.getElementById('mRRef').value,saisie:document.getElementById('mRSaisie').value,
@@ -447,14 +457,23 @@ window.openSMSModal=openSMSModal;
 function parseSMS(){
   const txt=document.getElementById('smsTxt').value;
   if(!txt.trim()){toast('Colle un SMS ou message WhatsApp','err');return;}
-  const nums=(txt.match(/[\d\s]{3,}/g)||[]).map(n=>parseInt(n.replace(/\s/g,''))).filter(n=>n>100&&n<999999999);
+  // Montant : reconnaît 178.300 ou 178 300 comme 178300
+  const txtNorm=txt.replace(/(\d)\.(\d{3})/g,'$1$2').replace(/(\d)\s(\d{3})/g,'$1$2');
+  const nums=(txtNorm.match(/\d+/g)||[]).map(n=>parseInt(n)).filter(n=>n>100&&n<999999999);
   const montant=nums.length?Math.max(...nums):0;
   const dm=txt.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.]?(\d{2,4})?/);
   if(dm){const[,j,m,y]=dm;const yr=y?(y.length===2?'20'+y:y):new Date().getFullYear();
     document.getElementById('smsDate').value=`${yr}-${m.padStart(2,'0')}-${j.padStart(2,'0')}`;}
-  const lo=txt.toLowerCase();let detPDV=pdvs[0]?.id;
-  pdvs.forEach(p=>{const words=p.nom.toLowerCase().split(' ');
-    if(words.some(w=>w.length>3&&lo.includes(w)))detPDV=p.id;});
+  // PDV : détection phonétique avec normalisation accents
+  const normalize=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,' ').trim();
+  const loNorm=normalize(txt);
+  let detPDV=pdvs[0]?.id;
+  let bestScore=0;
+  pdvs.forEach(p=>{
+    const words=normalize(p.nom).split(' ').filter(w=>w.length>3);
+    const score=words.filter(w=>loNorm.includes(w)).length;
+    if(score>bestScore){bestScore=score;detPDV=p.id;}
+  });
   document.getElementById('smsPDV').value=detPDV;
   let detCanal='CASH';
   if(/orange/i.test(txt))detCanal='OM';else if(/mtn/i.test(txt))detCanal='MTN';
@@ -545,7 +564,8 @@ function renderLignesVersement(){
       <div class="fg2">
         <div class="fg"><label>Montant (${DEVISE}) *</label>
           <input type="number" value="${l.montant||''}" placeholder="0" min="0"
-            oninput="lignesVersement[${i}].montant=parseFloat(this.value)||0;updateTotalVers()">
+            oninput="lignesVersement[${i}].montant=parseFloat(this.value)||0;updateTotalVers()"
+            onchange="lignesVersement[${i}].montant=parseFloat(this.value)||0;updateTotalVers()">
         </div>
         <div class="fg"><label>Référence</label>
           <input type="text" value="${l.ref||''}" placeholder="N° reçu, réf MM…"
@@ -581,6 +601,10 @@ async function saveVersements(){
   if(!date||!pdv){toast('Date et PDV obligatoires','err');return;}
   const valides=lignesVersement.filter(l=>l.montant>0&&l.compte);
   if(!valides.length){toast('Ajoute au moins un versement avec un montant','err');return;}
+  // Anti-doublons
+  const totalNouv=valides.reduce((s,l)=>s+l.montant,0);
+  const doublon=versements.find(v=>v.pdv===pdv&&v.date===date&&Math.abs((v.montant||0)-totalNouv)<totalNouv*0.01);
+  if(doublon&&!confirm(`⚠️ Doublon possible !\nUn versement similaire existe déjà pour ce PDV à cette date :\n${fmtD(doublon.date)} — ${fmt(doublon.montant)} ${DEVISE}\n\nConfirmer quand même ?`))return;
   for(const l of valides){
     const item={id:uid(),date,pdv,freq,type:l.type,compte:l.compte,ref:l.ref||'',
       montant:l.montant,statut,saisie,notes:'',ts:Date.now()};
@@ -1303,10 +1327,378 @@ async function toggleUser(id){
 }
 window.toggleUser=toggleUser;
 
-// BACKUP EXPOSED
-window.backupPC=backupPC;window.backupDropbox=backupDropbox;
-window.backupNow=backupNow;window.importerDonnees=importerDonnees;
-window.resetFilter=resetFilter;window.openM=openM;window.closeM=closeM;
+// ── TYPE RECETTE "À CRÉDIT" (Principale uniquement) ──
+function onRTypeChange(){
+  const type=document.getElementById('mRType').value;
+  const pdvEl=document.getElementById('mRPDV');
+  if(type==='credit'){
+    const principale=pdvs.find(p=>p.type==='principale');
+    if(principale){ pdvEl.value=principale.id; pdvEl.disabled=true; }
+    document.getElementById('mRCreditNote').style.display='block';
+  } else {
+    pdvEl.disabled=false;
+    document.getElementById('mRCreditNote').style.display='none';
+  }
+}
+window.onRTypeChange=onRTypeChange;
+
+// ══════════════════════════════════════════════════════
+// PETITE CAISSE (v4.1)
+// ══════════════════════════════════════════════════════
+function renderPetiteCaisse(){
+  const solde=petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
+  const tbody=document.getElementById('pcTbody');
+  const data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+  el('pcSolde',fmt(solde)+' '+DEVISE);
+  const soldeEl=document.getElementById('pcSoldeEl');
+  if(soldeEl)soldeEl.style.color=solde>=0?'var(--green)':'var(--red)';
+  if(!tbody)return;
+  if(!data.length){tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="ei">💰</div>Aucun mouvement petite caisse</div></td></tr>';return;}
+  let running=0;
+  const rows=[...data].reverse().map(m=>{
+    running+=m.type==='appro'?m.montant:-(m.montant||0);
+    return{...m,soldeApres:running};
+  }).reverse();
+  tbody.innerHTML=rows.map(m=>`<tr>
+    <td>${fmtD(m.date)}</td>
+    <td><span class="badge ${m.type==='appro'?'bg':'br'}">${m.type==='appro'?'Approvisionnement':'Dépense'}</span></td>
+    <td style="font-size:.82rem">${m.libelle||'—'}</td>
+    <td style="font-size:.78rem;color:var(--text2)">${m.categorie||'—'}</td>
+    <td class="amt ${m.type==='appro'?'pos':'neg'}">${m.type==='appro'?'+':'-'}${fmt(m.montant)}</td>
+    <td class="amt">${fmt(m.soldeApres)}</td>
+    <td style="font-size:.75rem;color:var(--text2)">${m.saisie||'—'}</td>
+  </tr>`).join('');
+}
+window.renderPetiteCaisse=renderPetiteCaisse;
+
+function openPCModal(type){
+  document.getElementById('pcMType').value=type;
+  document.getElementById('pcMTitle').textContent=type==='appro'?'Approvisionnement petite caisse':'Dépense petite caisse';
+  document.getElementById('pcMDate').value=today();
+  document.getElementById('pcMMontant').value='';
+  document.getElementById('pcMLibelle').value='';
+  document.getElementById('pcMCategorie').value=type==='appro'?'approvisionnement':'autre';
+  document.getElementById('pcMSaisie').value=currentUser.nom;
+  document.getElementById('pcCaisseSource').style.display=type==='appro'?'block':'none';
+  openM('mPetiteCaisse');
+}
+window.openPCModal=openPCModal;
+
+async function savePCMouvement(){
+  const type=document.getElementById('pcMType').value;
+  const date=document.getElementById('pcMDate').value;
+  const montant=parseFloat(document.getElementById('pcMMontant').value);
+  const libelle=document.getElementById('pcMLibelle').value.trim();
+  if(!date||!montant){toast('Date et montant obligatoires','err');return;}
+  // Si appro : débite la caisse principale
+  if(type==='appro'){
+    const caisseEl=document.getElementById('pcCaisseId');
+    if(caisseEl&&caisseEl.value){
+      const c=comptes.find(x=>x.id===caisseEl.value);
+      if(c){
+        c.solde=(c.solde||0)-montant;
+        await saveItem('comptes',c);
+        const m={id:uid(),date,compte:c.id,type:'sortie',
+          libelle:`Appro petite caisse${libelle?' — '+libelle:''}`,
+          ref:'',montant,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
+        mvts.push(m);await saveItem('mvts',m);
+      }
+    }
+  }
+  const item={id:uid(),date,type,libelle,
+    categorie:document.getElementById('pcMCategorie').value,
+    montant,saisie:currentUser.nom,notes:'',ts:Date.now()};
+  petiteCaisse.push(item);await saveItem('petiteCaisse',item);
+  closeM('mPetiteCaisse');
+  toast(type==='appro'?'Approvisionnement enregistré ✓':'Dépense enregistrée ✓');
+  renderPetiteCaisse();renderDashboard();
+}
+window.savePCMouvement=savePCMouvement;
+
+// ══════════════════════════════════════════════════════
+// SUIVI CAISSIÈRES (v4.1)
+// ══════════════════════════════════════════════════════
+function renderSuiviCaissiere(){
+  const periode=document.getElementById('scPeriode')?.value||'mois';
+  const t=today();
+  let debut,fin;
+  if(periode==='jour'){debut=t;fin=t;}
+  else if(periode==='semaine'){const b=weekBounds(t);debut=b.start;fin=b.end;}
+  else if(periode==='mois'){debut=t.slice(0,7)+'-01';fin=t;}
+  else{debut=document.getElementById('scDebut')?.value||t;fin=document.getElementById('scFin')?.value||t;}
+  // Groupe les clôtures par caissière
+  const dayC=clotures.filter(c=>c.date>=debut&&c.date<=fin);
+  const byCaissiere={};
+  dayC.forEach(c=>{
+    if(!byCaissiere[c.caissiere])byCaissiere[c.caissiere]={nom:c.caissiere,totalMachine:0,cashVerse:0,mmVerse:0,totalVerse:0,ecart:0,nb:0};
+    const b=byCaissiere[c.caissiere];
+    b.totalMachine+=(c.totalMachine||0);
+    b.cashVerse+=(c.cashVerse||0);
+    b.mmVerse+=(c.omVerse||0)+(c.mtnVerse||0)+(c.waveVerse||0)+(c.moovVerse||0);
+    b.totalVerse+=(c.totalVerse||0);
+    b.ecart+=(c.ecart||0);
+    b.nb++;
+  });
+  const tbody=document.getElementById('scTbody');
+  if(!tbody)return;
+  const data=Object.values(byCaissiere).sort((a,b)=>b.totalVerse-a.totalVerse);
+  if(!data.length){tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="ei">👤</div>Aucune donnée pour cette période</div></td></tr>';return;}
+  tbody.innerHTML=data.map(c=>{
+    const ecC=c.ecart===0?'amt pos':c.ecart<0?'amt neg':'amt neu';
+    return`<tr>
+      <td><b>${c.nom}</b></td>
+      <td class="amt" style="color:var(--blue)">${fmt(c.totalMachine)}</td>
+      <td class="amt pos">${fmt(c.cashVerse)}</td>
+      <td class="amt pos">${fmt(c.mmVerse)}</td>
+      <td class="amt pos">${fmt(c.totalVerse)}</td>
+      <td class="${ecC}">${c.ecart>0?'+':c.ecart<0?'−':''}${fmt(Math.abs(c.ecart))}</td>
+      <td style="color:var(--text2);font-size:.8rem">${c.nb} vacation(s)</td>
+    </tr>`;
+  }).join('');
+  // Totaux
+  const tot={totalMachine:0,cashVerse:0,mmVerse:0,totalVerse:0,ecart:0};
+  data.forEach(c=>{tot.totalMachine+=c.totalMachine;tot.cashVerse+=c.cashVerse;tot.mmVerse+=c.mmVerse;tot.totalVerse+=c.totalVerse;tot.ecart+=c.ecart;});
+  tbody.innerHTML+=`<tr style="background:var(--surface2);font-weight:700">
+    <td>TOTAL</td>
+    <td class="amt" style="color:var(--blue)">${fmt(tot.totalMachine)}</td>
+    <td class="amt pos">${fmt(tot.cashVerse)}</td>
+    <td class="amt pos">${fmt(tot.mmVerse)}</td>
+    <td class="amt pos">${fmt(tot.totalVerse)}</td>
+    <td class="${tot.ecart===0?'amt pos':tot.ecart<0?'amt neg':'amt neu'}">${tot.ecart>0?'+':tot.ecart<0?'−':''}${fmt(Math.abs(tot.ecart))}</td>
+    <td></td>
+  </tr>`;
+}
+window.renderSuiviCaissiere=renderSuiviCaissiere;
+
+function onSCPeriodeChange(){
+  const p=document.getElementById('scPeriode').value;
+  document.getElementById('scCustomDates').style.display=p==='custom'?'flex':'none';
+  renderSuiviCaissiere();
+}
+window.onSCPeriodeChange=onSCPeriodeChange;
+
+// ══════════════════════════════════════════════════════
+// RELEVÉS REFONDUS — 3 types (v4.1)
+// ══════════════════════════════════════════════════════
+function renderReleves(){
+  // Populate selects
+  const relPDV=document.getElementById('relPDV');
+  const relCompte=document.getElementById('relCompte');
+  if(relPDV)relPDV.innerHTML='<option value="">Tous les PDV</option>'+pdvs.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
+  if(relCompte)relCompte.innerHTML='<option value="">Tous les comptes</option>'+comptes.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  const type=document.getElementById('relType')?.value||'pdv';
+  onRelTypeChange(type);
+}
+window.renderReleves=renderReleves;
+
+function onRelTypeChange(type){
+  if(!type)type=document.getElementById('relType')?.value||'pdv';
+  // Affiche/masque les filtres selon le type
+  const pdvRow=document.getElementById('relPDVRow');
+  const cptRow=document.getElementById('relCptRow');
+  if(pdvRow)pdvRow.style.display=(type==='pdv')?'flex':'none';
+  if(cptRow)cptRow.style.display=(type==='compte')?'flex':'none';
+  genererReleve();
+}
+window.onRelTypeChange=onRelTypeChange;
+
+function genererReleve(){
+  const t=today();
+  const type=document.getElementById('relType')?.value||'pdv';
+  const p=document.getElementById('relPeriode')?.value||'mois';
+  let debut,fin;
+  if(p==='jour'){debut=t;fin=t;}
+  else if(p==='semaine'){const b=weekBounds(t);debut=b.start;fin=b.end;}
+  else if(p==='mois'){debut=t.slice(0,7)+'-01';fin=t;}
+  else{debut=document.getElementById('relDebut')?.value||t;fin=document.getElementById('relFin')?.value||t;}
+  const pdvF=document.getElementById('relPDV')?.value;
+  const cptF=document.getElementById('relCompte')?.value;
+  const preview=document.getElementById('relevePreview');
+  if(!preview)return;
+
+  if(type==='pdv'){
+    // ── RELEVÉ PAR PDV ──
+    const recF=recettes.filter(r=>r.date>=debut&&r.date<=fin&&(!pdvF||r.pdv===pdvF));
+    const verF=versements.filter(v=>v.date>=debut&&v.date<=fin&&(!pdvF||v.pdv===pdvF));
+    const totRec=recF.reduce((s,r)=>s+(r.montant||0),0);
+    const totVer=verF.reduce((s,v)=>s+(v.montant||0),0);
+    const totConf=verF.filter(v=>v.statut==='confirmé').reduce((s,v)=>s+(v.montant||0),0);
+    window._releveData={type,debut,fin,pdvF,recF,verF,totRec,totVer,totConf};
+    preview.innerHTML=_buildRelevePDV(debut,fin,pdvF,recF,verF,totRec,totVer,totConf);
+
+  } else if(type==='compte'){
+    // ── RELEVÉ PAR ÉTABLISSEMENT FINANCIER ──
+    const cpt=comptes.find(c=>c.id===cptF);
+    const mvtF=[
+      ...mvts.filter(m=>m.date>=debut&&m.date<=fin&&(!cptF||m.compte===cptF)),
+      ...transferts.filter(t=>t.date>=debut&&t.date<=fin&&(!cptF||t.compteSrc===cptF||t.compteDst===cptF))
+    ].sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
+    const verF=versements.filter(v=>v.date>=debut&&v.date<=fin&&v.statut==='confirmé'&&(!cptF||v.compte===cptF));
+    window._releveData={type,debut,fin,cptF,cpt,mvtF,verF};
+    preview.innerHTML=_buildRelEtablissement(debut,fin,cpt,mvtF,verF);
+
+  } else {
+    // ── RELEVÉ TRANSFERTS MM→BANQUE ──
+    const trfF=transferts.filter(t=>t.date>=debut&&t.date<=fin);
+    const totTrf=trfF.reduce((s,t)=>s+(t.montant||0),0);
+    window._releveData={type,debut,fin,trfF,totTrf};
+    preview.innerHTML=_buildRelTransferts(debut,fin,trfF,totTrf);
+  }
+}
+window.genererReleve=genererReleve;
+
+function _headerReleve(titre,debut,fin,sousTitre=''){
+  return`<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:12px;border-bottom:2px solid #00C47A">
+    <div>
+      <div style="font-size:1.3rem;font-weight:800;color:#00C47A">${PHARMACIE_NOM}</div>
+      <div style="font-size:1rem;font-weight:700;color:#111;margin-top:4px">${titre}</div>
+      <div style="font-size:.85rem;color:#666;margin-top:2px">Période : ${fmtD(debut)} au ${fmtD(fin)}</div>
+      ${sousTitre?`<div style="font-size:.8rem;color:#666">${sousTitre}</div>`:''}
+    </div>
+    <div style="text-align:right;font-size:.75rem;color:#999">Généré le ${new Date().toLocaleString('fr-FR')}</div>
+  </div>`;
+}
+
+function _buildRelevePDV(debut,fin,pdvF,recF,verF,totRec,totVer,totConf){
+  const pdvNom=pdvF?pdvs.find(p=>p.id===pdvF)?.nom||pdvF:'Tous les PDV';
+  return`<div id="relevePrintZone" style="font-family:Arial,sans-serif;color:#111">
+    ${_headerReleve('Relevé Recettes & Versements',debut,fin,'PDV : '+pdvNom)}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+      ${[['Total recettes',totRec,'#00C47A'],['Total versé',totVer,'#4d8af0'],['Confirmé',totConf,'#a855f7']]
+        .map(([l,v,c])=>`<div style="border:1px solid #eee;border-radius:8px;padding:12px;border-left:3px solid ${c}"><div style="font-size:.7rem;color:#999;text-transform:uppercase">${l}</div><div style="font-size:1.1rem;font-weight:800;color:${c}">${fmt(v)} ${DEVISE}</div></div>`).join('')}
+    </div>
+    ${recF.length?`<div style="margin-bottom:20px">
+      <div style="font-weight:700;margin-bottom:8px;font-size:.85rem;text-transform:uppercase;color:#555">Recettes (${recF.length})</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead><tr>${['Date','PDV','Canal','Type','Montant','Saisi par'].map(h=>`<th style="background:#f5f5f5;padding:7px 10px;text-align:left;border:1px solid #eee">${h}</th>`).join('')}</tr></thead>
+        <tbody>${recF.map((r,i)=>`<tr style="background:${i%2?'#fafafa':'#fff'}">${[fmtD(r.date),pdvs.find(p=>p.id===r.pdv)?.nom||r.pdv,MM_LABEL[r.canal]||r.canal,r.type,fmt(r.montant)+' '+DEVISE,r.saisie||'—'].map(v=>`<td style="padding:6px 10px;border:1px solid #eee">${v}</td>`).join('')}</tr>`).join('')}
+        <tr style="background:#e8f5f0;font-weight:700"><td colspan="4" style="padding:6px 10px;border:1px solid #ccc">TOTAL</td><td style="padding:6px 10px;border:1px solid #ccc;color:#00C47A">${fmt(totRec)} ${DEVISE}</td><td style="border:1px solid #ccc"></td></tr></tbody>
+      </table></div>`:''}
+    ${verF.length?`<div style="margin-bottom:20px">
+      <div style="font-weight:700;margin-bottom:8px;font-size:.85rem;text-transform:uppercase;color:#555">Versements (${verF.length})</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead><tr>${['Date','PDV','Type','Compte','Référence','Montant','Statut'].map(h=>`<th style="background:#f5f5f5;padding:7px 10px;text-align:left;border:1px solid #eee">${h}</th>`).join('')}</tr></thead>
+        <tbody>${verF.map((v,i)=>{const cpt=comptes.find(c=>c.id===v.compte);return`<tr style="background:${i%2?'#fafafa':'#fff'}">${[fmtD(v.date),pdvs.find(p=>p.id===v.pdv)?.nom||v.pdv,MM_LABEL[v.type]||v.type,cpt?.nom||'—',v.ref||'—',fmt(v.montant)+' '+DEVISE,v.statut].map(x=>`<td style="padding:6px 10px;border:1px solid #eee">${x}</td>`).join('')}</tr>`;}).join('')}
+        <tr style="background:#e8f0ff;font-weight:700"><td colspan="5" style="padding:6px 10px;border:1px solid #ccc">TOTAL</td><td style="padding:6px 10px;border:1px solid #ccc;color:#4d8af0">${fmt(totVer)} ${DEVISE}</td><td style="border:1px solid #ccc"></td></tr></tbody>
+      </table></div>`:''}
+    <div style="margin-top:30px;display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div style="border-top:1px solid #ccc;padding-top:8px;font-size:.82rem;color:#999">Signature Responsable</div>
+      <div style="border-top:1px solid #ccc;padding-top:8px;font-size:.82rem;color:#999">Cachet & Signature Comptable</div>
+    </div>
+  </div>`;
+}
+
+function _buildRelEtablissement(debut,fin,cpt,mvtF,verF){
+  const nom=cpt?cpt.nom:'Tous les comptes';
+  // Calcul solde progressif
+  let soldeInit=cpt?.solde||0;
+  // Recalcule solde début de période
+  const tousMvts=[...mvtF].sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
+  return`<div id="relevePrintZone" style="font-family:Arial,sans-serif;color:#111">
+    ${_headerReleve('Relevé Établissement Financier',debut,fin,nom)}
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
+      ${[['Entrées',tousMvts.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0),'#00C47A'],
+         ['Sorties',tousMvts.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0),'#f05050'],
+         ['Solde actuel',cpt?.solde||0,'#4d8af0']]
+        .map(([l,v,c])=>`<div style="border:1px solid #eee;border-radius:8px;padding:12px;border-left:3px solid ${c}"><div style="font-size:.7rem;color:#999;text-transform:uppercase">${l}</div><div style="font-size:1.1rem;font-weight:800;color:${c}">${fmt(v)} ${DEVISE}</div></div>`).join('')}
+    </div>
+    ${verF.length?`<div style="margin-bottom:12px">
+      <div style="font-weight:700;margin-bottom:8px;font-size:.85rem;text-transform:uppercase;color:#555">Versements reçus (${verF.length})</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead><tr>${['Date','PDV','Type','Montant','Référence'].map(h=>`<th style="background:#f5f5f5;padding:7px 10px;text-align:left;border:1px solid #eee">${h}</th>`).join('')}</tr></thead>
+        <tbody>${verF.map((v,i)=>`<tr style="background:${i%2?'#fafafa':'#fff'}">${[fmtD(v.date),pdvs.find(p=>p.id===v.pdv)?.nom||v.pdv,MM_LABEL[v.type]||v.type,fmt(v.montant)+' '+DEVISE,v.ref||'—'].map(x=>`<td style="padding:6px 10px;border:1px solid #eee">${x}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table></div>`:''}
+    ${tousMvts.length?`<div style="margin-bottom:20px">
+      <div style="font-weight:700;margin-bottom:8px;font-size:.85rem;text-transform:uppercase;color:#555">Journal des mouvements (${tousMvts.length})</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead><tr>${['Date','Type','Libellé','Référence','Montant','Solde après'].map(h=>`<th style="background:#f5f5f5;padding:7px 10px;text-align:left;border:1px solid #eee">${h}</th>`).join('')}</tr></thead>
+        <tbody>${tousMvts.map((m,i)=>`<tr style="background:${i%2?'#fafafa':'#fff'}">
+          <td style="padding:6px 10px;border:1px solid #eee">${fmtD(m.date)}</td>
+          <td style="padding:6px 10px;border:1px solid #eee"><span style="color:${m.type==='entrée'?'#00C47A':'#f05050'};font-weight:700">${m.type==='entrée'?'↑ Entrée':'↓ Sortie'}</span></td>
+          <td style="padding:6px 10px;border:1px solid #eee">${m.libelle||'—'}</td>
+          <td style="padding:6px 10px;border:1px solid #eee">${m.ref||'—'}</td>
+          <td style="padding:6px 10px;border:1px solid #eee;color:${m.type==='entrée'?'#00C47A':'#f05050'};font-weight:700">${m.type==='entrée'?'+':'-'}${fmt(m.montant)} ${DEVISE}</td>
+          <td style="padding:6px 10px;border:1px solid #eee;font-weight:700">${fmt(m.soldeApres||0)} ${DEVISE}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`:'<div style="color:#999;text-align:center;padding:20px">Aucun mouvement sur cette période</div>'}
+    <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div style="border-top:1px solid #ccc;padding-top:8px;font-size:.82rem;color:#999">Signature Responsable</div>
+      <div style="border-top:1px solid #ccc;padding-top:8px;font-size:.82rem;color:#999">Cachet & Signature Comptable</div>
+    </div>
+  </div>`;
+}
+
+function _buildRelTransferts(debut,fin,trfF,totTrf){
+  return`<div id="relevePrintZone" style="font-family:Arial,sans-serif;color:#111">
+    ${_headerReleve('Relevé Transferts Mobile Money → Banque',debut,fin)}
+    <div style="margin-bottom:16px;padding:12px;background:#fff8e1;border-radius:8px;border-left:3px solid #f5a623">
+      <div style="font-size:.75rem;color:#b45309;text-transform:uppercase">Total transféré sur la période</div>
+      <div style="font-size:1.3rem;font-weight:800;color:#b45309">${fmt(totTrf)} ${DEVISE}</div>
+    </div>
+    ${trfF.length?`<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+      <thead><tr>${['Date','Compte source (MM)','Compte dest. (Banque)','Référence','Montant','Saisi par'].map(h=>`<th style="background:#f5f5f5;padding:7px 10px;text-align:left;border:1px solid #eee">${h}</th>`).join('')}</tr></thead>
+      <tbody>${trfF.map((t,i)=>{const src=comptes.find(c=>c.id===t.compteSrc),dst=comptes.find(c=>c.id===t.compteDst);return`<tr style="background:${i%2?'#fafafa':'#fff'}">${[fmtD(t.date),src?.nom||'—',dst?.nom||'—',t.ref||'—',fmt(t.montant)+' '+DEVISE,t.saisie||'—'].map(v=>`<td style="padding:6px 10px;border:1px solid #eee">${v}</td>`).join('')}</tr>`;}).join('')}
+      <tr style="background:#fff8e1;font-weight:700"><td colspan="4" style="padding:6px 10px;border:1px solid #ccc">TOTAL</td><td style="padding:6px 10px;border:1px solid #ccc;color:#b45309">${fmt(totTrf)} ${DEVISE}</td><td style="border:1px solid #ccc"></td></tr>
+      </tbody></table>`:'<div style="color:#999;text-align:center;padding:20px">Aucun transfert sur cette période</div>'}
+  </div>`;
+}
+
+function onRelPeriodeChange(){
+  const p=document.getElementById('relPeriode').value;
+  document.getElementById('relCustomDates').style.display=p==='custom'?'flex':'none';
+  genererReleve();
+}
+window.onRelPeriodeChange=onRelPeriodeChange;
+
+function imprimerReleve(){
+  const zone=document.getElementById('relevePrintZone');
+  if(!zone){toast('Génère d\'abord le relevé','err');return;}
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Relevé ${PHARMACIE_NOM}</title>
+    <style>body{font-family:Arial,sans-serif;margin:20px;color:#111}@media print{body{margin:10px}}</style>
+    </head><body>${zone.innerHTML}<script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+window.imprimerReleve=imprimerReleve;
+
+function exporterReleveExcel(){
+  const d=window._releveData;if(!d){toast('Génère d\'abord le relevé','err');return;}
+  const rows=[[PHARMACIE_NOM],[`Relevé du ${fmtD(d.debut)} au ${fmtD(d.fin)}`],[]];
+  if(d.type==='pdv'){
+    rows.push(['=== RECETTES ==='],['Date','PDV','Canal','Type','Montant','Saisi par']);
+    (d.recF||[]).forEach(r=>rows.push([fmtD(r.date),pdvs.find(p=>p.id===r.pdv)?.nom||r.pdv,MM_LABEL[r.canal]||r.canal,r.type,r.montant,r.saisie||'']));
+    rows.push(['TOTAL','','','',d.totRec],[]);
+    rows.push(['=== VERSEMENTS ==='],['Date','PDV','Type','Compte','Référence','Montant','Statut']);
+    (d.verF||[]).forEach(v=>{const cpt=comptes.find(c=>c.id===v.compte);rows.push([fmtD(v.date),pdvs.find(p=>p.id===v.pdv)?.nom||v.pdv,MM_LABEL[v.type]||v.type,cpt?.nom||'',v.ref||'',v.montant,v.statut]);});
+    rows.push(['TOTAL','','','','',d.totVer]);
+  } else if(d.type==='compte'){
+    rows.push([`Compte : ${d.cpt?.nom||'Tous'}`],[]);
+    rows.push(['=== MOUVEMENTS ==='],['Date','Type','Libellé','Référence','Montant','Solde après']);
+    (d.mvtF||[]).forEach(m=>rows.push([fmtD(m.date),m.type,m.libelle||'',m.ref||'',m.type==='entrée'?m.montant:-m.montant,m.soldeApres||0]));
+  } else {
+    rows.push(['=== TRANSFERTS MM→BANQUE ==='],['Date','Compte source','Compte dest.','Référence','Montant']);
+    (d.trfF||[]).forEach(t=>{const src=comptes.find(c=>c.id===t.compteSrc),dst=comptes.find(c=>c.id===t.compteDst);rows.push([fmtD(t.date),src?.nom||'',dst?.nom||'',t.ref||'',t.montant]);});
+    rows.push(['TOTAL','','','',d.totTrf]);
+  }
+  const csv=rows.map(r=>r.map(cell=>{const s=String(cell??'').replace(/"/g,'""');return s.includes(';')||s.includes('"')?`"${s}"`:s;}).join(';')).join('\n');
+  const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`releve_${d.debut}_${d.fin}.csv`;a.click();URL.revokeObjectURL(a.href);
+  toast('Export Excel (.csv) téléchargé ✓');
+}
+window.exporterReleveExcel=exporterReleveExcel;
+
+function exporterReleveWord(){
+  const zone=document.getElementById('relevePrintZone');
+  if(!zone){toast('Génère d\'abord le relevé','err');return;}
+  const d=window._releveData;
+  const html=`<!DOCTYPE html><html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'><head><meta charset="UTF-8"><title>Relevé</title><style>body{font-family:Arial,sans-serif;font-size:11pt}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccc;padding:5pt 8pt;font-size:10pt}th{background:#f0f0f0;font-weight:bold}</style></head><body>${zone.innerHTML}</body></html>`;
+  const blob=new Blob([html],{type:'application/msword;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`releve_${d?.debut||today()}_${d?.fin||today()}.doc`;
+  a.click();URL.revokeObjectURL(a.href);toast('Export Word (.doc) téléchargé ✓');
+}
+window.exporterReleveWord=exporterReleveWord;
 
 // ══════════════════════════════════════════════════════
 // IMPORT EXCEL — PharmaCash_Import_Demarrage.xlsx
@@ -1518,9 +1910,23 @@ async function importerExcel(e){
 }
 window.importerExcel=importerExcel;
 
-// ══════════════════════════════════════════════════════
-// INIT
-// ══════════════════════════════════════════════════════
+// ── BACKUP & UTILS EXPOSED ─────────────────────────────
+window.backupPC=backupPC;window.backupDropbox=backupDropbox;
+window.backupNow=backupNow;window.importerDonnees=importerDonnees;
+window.resetFilter=resetFilter;window.openM=openM;window.closeM=closeM;
+
+// ── REFRESH (v4.1) ─────────────────────────────────────
+async function refreshPage(){
+  if(useFirebase){ sync('syncing','Actualisation…'); await loadAll(); }
+  populateSelects();
+  const active=PAGES.find(p=>document.getElementById('pg-'+p)?.classList.contains('active'));
+  if(active)({dashboard:renderDashboard,recettes:renderRecettes,versements:renderVersements,
+    caisse:renderCaisse,banques:renderBanques,rapport:renderRapport,
+    releves:renderReleves,petitecaisse:renderPetiteCaisse,
+    caissiere:renderSuiviCaissiere,admin:renderAdmin,utilisateurs:renderUsers})[active]?.();
+  toast('Données actualisées ✓');
+}
+window.refreshPage=refreshPage;
 async function init(){
   if(useFirebase){sync('syncing','Connexion…');try{await loadAll();sync('ok','🔴 Temps réel');}catch(e){sync('error','Mode local');}}
   else sync('ok','Mode local');
