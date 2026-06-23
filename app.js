@@ -529,7 +529,83 @@ function renderVersements(){
 }
 window.renderVersements=renderVersements;
 
-// Versement multiple v4 — plusieurs lignes par PDV
+// ── SMS/WhatsApp parser pour VERSEMENTS ──────────────
+function openSMSVersModal(){
+  document.getElementById('smsTxtVers').value='';
+  document.getElementById('smsVersResult').style.display='none';
+  document.getElementById('btnSaveSMSVers').style.display='none';
+  document.getElementById('smsDateVers').value=today();
+  document.getElementById('smsPDVVers').innerHTML=pdvs.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
+  document.getElementById('smsCptVers').innerHTML=comptes.filter(c=>c.actif!==false).map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  openM('mSMSVers');
+}
+window.openSMSVersModal=openSMSVersModal;
+
+function parseSMSVers(){
+  const txt=document.getElementById('smsTxtVers').value;
+  if(!txt.trim()){toast('Colle un SMS ou message WhatsApp','err');return;}
+  // Montant : reconnaît 178.300 ou 178 300 comme 178300
+  const txtNorm=txt.replace(/(\d)\.(\d{3})/g,'$1$2').replace(/(\d)\s(\d{3})/g,'$1$2');
+  const nums=(txtNorm.match(/\d+/g)||[]).map(n=>parseInt(n)).filter(n=>n>100&&n<999999999);
+  const montant=nums.length?Math.max(...nums):0;
+  // Date
+  const dm=txt.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.]?(\d{2,4})?/);
+  if(dm){const[,j,m,y]=dm;const yr=y?(y.length===2?'20'+y:y):new Date().getFullYear();
+    document.getElementById('smsDateVers').value=`${yr}-${m.padStart(2,'0')}-${j.padStart(2,'0')}`;}
+  // PDV : détection phonétique
+  const normalize=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,' ').trim();
+  const loNorm=normalize(txt);
+  let detPDV=pdvs[0]?.id;let bestScore=0;
+  pdvs.forEach(p=>{
+    const words=normalize(p.nom).split(' ').filter(w=>w.length>3);
+    const score=words.filter(w=>loNorm.includes(w)).length;
+    if(score>bestScore){bestScore=score;detPDV=p.id;}
+  });
+  document.getElementById('smsPDVVers').value=detPDV;
+  // Type versement
+  let detCanal='OM';
+  if(/orange|om/i.test(txt))detCanal='OM';
+  else if(/mtn/i.test(txt))detCanal='MTN';
+  else if(/wave/i.test(txt))detCanal='WAVE';
+  else if(/moov/i.test(txt))detCanal='MOOV';
+  else if(/cash|espece/i.test(txt))detCanal='CASH';
+  else if(/cheque/i.test(txt))detCanal='CHEQUE';
+  else if(/virement/i.test(txt))detCanal='VIREMENT';
+  document.getElementById('smsCanalVers').value=detCanal;
+  // Compte destination — cherche le compte MM correspondant
+  const cptMatch=comptes.find(c=>c.actif!==false&&c.op===detCanal);
+  if(cptMatch)document.getElementById('smsCptVers').value=cptMatch.id;
+  // Référence — cherche un pattern de référence
+  const refMatch=txt.match(/ref[:\s#]*([A-Z0-9]{4,})/i)||txt.match(/\b([A-Z]{2,}\d{3,})\b/);
+  if(refMatch)document.getElementById('smsRefVers').value=refMatch[1];
+  document.getElementById('smsMontantVers').value=montant||'';
+  document.getElementById('smsVersResult').style.display='block';
+  document.getElementById('btnSaveSMSVers').style.display='inline-block';
+  toast('Données extraites — vérifie et confirme');
+}
+window.parseSMSVers=parseSMSVers;
+
+async function saveSMSVersement(){
+  const pdv=document.getElementById('smsPDVVers').value;
+  const date=document.getElementById('smsDateVers').value;
+  const montant=parseFloat(document.getElementById('smsMontantVers').value);
+  const type=document.getElementById('smsCanalVers').value;
+  const compte=document.getElementById('smsCptVers').value;
+  const ref=document.getElementById('smsRefVers').value;
+  const freq=document.getElementById('smsFreqVers').value;
+  const statut=document.getElementById('smsStatutVers').value;
+  if(!date||!pdv||!montant){toast('Données incomplètes','err');return;}
+  // Anti-doublons
+  const doublon=versements.find(v=>v.pdv===pdv&&v.date===date&&Math.abs((v.montant||0)-montant)<montant*0.01);
+  if(doublon&&!confirm(`⚠️ Doublon possible !\nVersement similaire déjà saisi :\n${fmtD(doublon.date)} — ${fmt(doublon.montant)} ${DEVISE}\n\nConfirmer quand même ?`))return;
+  const item={id:uid(),date,pdv,freq,type,compte,ref,montant,statut,
+    saisie:currentUser.nom,notes:'Via SMS/WhatsApp\n'+document.getElementById('smsTxtVers').value.slice(0,200),ts:Date.now()};
+  versements.push(item);
+  if(statut==='confirmé')await crediterCompte(compte,montant,pdv,ref,date);
+  await saveItem('versements',item);
+  closeM('mSMSVers');toast('Versement importé ✓');renderVersements();renderDashboard();
+}
+window.saveSMSVersement=saveSMSVersement;
 let lignesVersement=[];
 function openVersModal(){
   lignesVersement=[];
