@@ -882,11 +882,31 @@ async function saveMvt(){
   if(!date||!compteId||!montant){toast('Champs manquants','err');return;}
   const c=comptes.find(x=>x.id===compteId);
   if(c){if(type==='entrée')c.solde=(c.solde||0)+montant;else if(type==='sortie')c.solde=(c.solde||0)-montant;await saveItem('comptes',c);}
+  const benef_nom=document.getElementById('mMBenefNom')?.value.trim()||'';
+  const benef_type=document.getElementById('mMBenefType')?.value||'Particulier';
+  const benef_cni=document.getElementById('mMBenefCNI')?.value.trim()||'';
+  const benef_tel=document.getElementById('mMBenefTel')?.value.trim()||'';
+  const responsable=document.getElementById('mMResponsable')?.value.trim()||currentUser.nom;
   const item={id:uid(),date,compte:compteId,type,libelle:document.getElementById('mMNotes').value,
     ref:document.getElementById('mMRef').value,montant,soldeApres:c?.solde||0,
+    benef_nom,benef_type,benef_cni,benef_tel,responsable,
     saisie:document.getElementById('mMSaisie').value,ts:Date.now()};
   mvts.push(item);await saveItem('mvts',item);
   closeM('mMvt');toast('Mouvement enregistré ✓');renderBanques();renderDashboard();
+  // Reçu automatique pour les sorties
+  if(type==='sortie'){
+    if(confirm('Imprimer le reçu de caisse ?')){
+      genererRecuCaisse({
+        date,heure:nowTm(),
+        libelle:item.libelle||'Sortie de caisse',
+        categorie:c?.nom||'',
+        modePaiement:c?.cat==='mobile_money'?'Mobile Money':c?.cat==='banque'?'Virement/Chèque':'Espèces',
+        ref:item.ref,montant,typeRecu:'Sortie de caisse',
+        caisse:c?.nom||'Grande caisse',
+        responsable,benef_nom,benef_type,benef_cni,benef_tel
+      });
+    }
+  }
 }
 window.saveMvt=saveMvt;
 async function delMvt(id,src){
@@ -939,8 +959,136 @@ async function saveTransfert(){
 window.saveTransfert=saveTransfert;
 
 // ══════════════════════════════════════════════════════
-// RAPPORT
+// REÇU DE CAISSE — Petite caisse & Grande caisse (v4.1)
 // ══════════════════════════════════════════════════════
+function genererRecuCaisse(data){
+  const numRecu='RC-'+Date.now().toString(36).toUpperCase();
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Reçu de caisse — ${PHARMACIE_NOM}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;font-size:11pt;color:#111;padding:20px}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #00C47A;padding-bottom:12px;margin-bottom:16px}
+    .pharma-name{font-size:1.2rem;font-weight:800;color:#00C47A}
+    .doc-title{font-size:1rem;font-weight:700;text-align:right}
+    .doc-num{font-size:.8rem;color:#666;text-align:right}
+    .section{margin-bottom:14px}
+    .section-title{font-size:.75rem;text-transform:uppercase;color:#666;font-weight:700;margin-bottom:6px;border-bottom:1px solid #eee;padding-bottom:4px}
+    .row{display:flex;gap:20px;margin-bottom:6px}
+    .field{flex:1}
+    .label{font-size:.7rem;color:#999;text-transform:uppercase}
+    .value{font-size:.95rem;font-weight:600;color:#111;border-bottom:1px solid #ddd;padding-bottom:2px;min-height:20px}
+    .montant-box{background:#f0faf5;border:2px solid #00C47A;border-radius:8px;padding:12px;text-align:center;margin:14px 0}
+    .montant-label{font-size:.75rem;color:#666;text-transform:uppercase}
+    .montant-val{font-size:1.6rem;font-weight:800;color:#00C47A}
+    .montant-lettres{font-size:.82rem;color:#444;font-style:italic;margin-top:4px}
+    .signatures{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-top:30px}
+    .sig-box{border-top:1px solid #ccc;padding-top:8px;text-align:center}
+    .sig-label{font-size:.72rem;color:#666;text-transform:uppercase}
+    .sig-space{height:50px}
+    .footer{margin-top:20px;font-size:.68rem;color:#999;text-align:center;border-top:1px solid #eee;padding-top:8px}
+    @media print{body{padding:10px}}
+  </style></head><body>
+  <div class="header">
+    <div>
+      <div class="pharma-name">${PHARMACIE_NOM}</div>
+      <div style="font-size:.78rem;color:#666">Reçu de caisse</div>
+    </div>
+    <div>
+      <div class="doc-title">REÇU DE CAISSE</div>
+      <div class="doc-num">N° ${numRecu}</div>
+      <div class="doc-num">Date : ${fmtD(data.date)} ${data.heure||''}</div>
+      <div class="doc-num">Type : ${data.typeRecu||'Dépense'}</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Détails de l'opération</div>
+    <div class="row">
+      <div class="field"><div class="label">Libellé</div><div class="value">${data.libelle||'—'}</div></div>
+      <div class="field"><div class="label">Catégorie</div><div class="value">${data.categorie||'—'}</div></div>
+    </div>
+    <div class="row">
+      <div class="field"><div class="label">Mode de paiement</div><div class="value">${data.modePaiement||'Espèces'}</div></div>
+      <div class="field"><div class="label">Référence</div><div class="value">${data.ref||'—'}</div></div>
+    </div>
+  </div>
+
+  <div class="montant-box">
+    <div class="montant-label">Montant</div>
+    <div class="montant-val">${fmt(data.montant)} ${DEVISE}</div>
+    <div class="montant-lettres">${nombreEnLettres(data.montant)} francs CFA</div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Bénéficiaire</div>
+    <div class="row">
+      <div class="field"><div class="label">Nom & Prénom / Société</div><div class="value">${data.benef_nom||'—'}</div></div>
+      <div class="field"><div class="label">Type</div><div class="value">${data.benef_type||'Particulier'}</div></div>
+    </div>
+    <div class="row">
+      <div class="field"><div class="label">CNI / Identifiant</div><div class="value">${data.benef_cni||'—'}</div></div>
+      <div class="field"><div class="label">Téléphone</div><div class="value">${data.benef_tel||'—'}</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Responsable</div>
+    <div class="row">
+      <div class="field"><div class="label">Responsable de la dépense</div><div class="value">${data.responsable||'—'}</div></div>
+      <div class="field"><div class="label">Caisse concernée</div><div class="value">${data.caisse||'Petite caisse'}</div></div>
+    </div>
+  </div>
+
+  <div class="signatures">
+    <div class="sig-box">
+      <div class="sig-label">Responsable caisse</div>
+      <div class="sig-space"></div>
+      <div style="font-size:.75rem;color:#444">${data.responsable||'_______________'}</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-label">Bénéficiaire</div>
+      <div class="sig-space"></div>
+      <div style="font-size:.75rem;color:#444">${data.benef_nom||'_______________'}</div>
+    </div>
+    <div class="sig-box">
+      <div class="sig-label">Pharmacien Titulaire</div>
+      <div class="sig-space"></div>
+      <div style="font-size:.75rem;color:#444">Dr HATHRY Jean Hubert</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Document généré par PharmaCash Pro — ${new Date().toLocaleString('fr-FR')} — N° ${numRecu}
+  </div>
+  <script>window.onload=()=>window.print()<\/script>
+  </body></html>`);
+  w.document.close();
+}
+window.genererRecuCaisse=genererRecuCaisse;
+
+// Conversion montant en lettres (FCFA)
+function nombreEnLettres(n){
+  const u=['','un','deux','trois','quatre','cinq','six','sept','huit','neuf','dix','onze','douze','treize','quatorze','quinze','seize','dix-sept','dix-huit','dix-neuf'];
+  const d=['','','vingt','trente','quarante','cinquante','soixante','soixante','quatre-vingt','quatre-vingt'];
+  function conv(n){
+    if(n===0)return'';if(n<20)return u[n];
+    const di=Math.floor(n/10),un=n%10;
+    if(di===7||di===9)return d[di]+(un===0?'':'-'+(un===1&&di===7?'et-':'')+ u[10+un]);
+    if(di===8)return'quatre-vingt'+(un===0?'s':'-'+u[un]);
+    return d[di]+(un===0?'':(un===1?'-et-un':'-'+u[un]));
+  }
+  n=Math.round(n||0);
+  if(n===0)return'zéro';
+  let r='';
+  if(n>=1000000){r+=conv(Math.floor(n/1000000))+(Math.floor(n/1000000)>1?' millions ':' million ');n%=1000000;}
+  if(n>=1000){const m=Math.floor(n/1000);r+=(m===1?'mille':conv(m)+' mille')+' ';n%=1000;}
+  if(n>=100){const c=Math.floor(n/100);r+=(c===1?'cent':conv(c)+' cent')+' ';n%=100;}
+  if(n>0)r+=conv(n);
+  return r.trim();
+}
+window.nombreEnLettres=nombreEnLettres;
 function onPeriodeChange(){
   const p=document.getElementById('rPeriode').value;
   document.getElementById('rCustomDates').style.display=p==='custom'?'flex':'none';
@@ -1244,6 +1392,12 @@ async function savePCMouvement(){
   const montant=parseFloat(document.getElementById('pcMMontant').value);
   const libelle=document.getElementById('pcMLibelle').value.trim();
   if(!date||!montant){toast('Date et montant obligatoires','err');return;}
+  const benef_nom=document.getElementById('pcBenefNom')?.value.trim()||'';
+  const benef_type=document.getElementById('pcBenefType')?.value||'Particulier';
+  const benef_cni=document.getElementById('pcBenefCNI')?.value.trim()||'';
+  const benef_tel=document.getElementById('pcBenefTel')?.value.trim()||'';
+  const responsable=document.getElementById('pcResponsable')?.value.trim()||currentUser.nom;
+  const modePaiement=document.getElementById('pcModePaiement')?.value||'Espèces';
   // Si appro : débite la caisse principale
   if(type==='appro'){
     const caisseEl=document.getElementById('pcCaisseId');
@@ -1261,11 +1415,26 @@ async function savePCMouvement(){
   }
   const item={id:uid(),date,type,libelle,
     categorie:document.getElementById('pcMCategorie').value,
+    modePaiement,responsable,
+    benef_nom,benef_type,benef_cni,benef_tel,
     montant,saisie:currentUser.nom,notes:'',ts:Date.now()};
   petiteCaisse.push(item);await saveItem('petiteCaisse',item);
   closeM('mPetiteCaisse');
   toast(type==='appro'?'Approvisionnement enregistré ✓':'Dépense enregistrée ✓');
   renderPetiteCaisse();renderDashboard();
+  // Générer reçu automatiquement pour les dépenses
+  if(type==='depense'){
+    if(confirm('Imprimer le reçu de caisse ?')){
+      genererRecuCaisse({
+        date,heure:nowTm(),libelle,
+        categorie:item.categorie,
+        modePaiement,ref:'',
+        montant,typeRecu:'Dépense petite caisse',
+        caisse:'Petite caisse',
+        responsable,benef_nom,benef_type,benef_cni,benef_tel
+      });
+    }
+  }
 }
 window.savePCMouvement=savePCMouvement;
 
