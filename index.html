@@ -288,7 +288,13 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
 </div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mVers2')">Annuler</button><button class="btn btn-green" onclick="saveVersements()">Enregistrer tout</button></div></div></div>
 
 <!-- MOUVEMENT MANUEL -->
-<div class="modal-ov" id="mMvt"><div class="modal"><div class="modal-hdr"><div class="modal-title">Mouvement financier</div><button class="close-x" onclick="closeM('mMvt')">✕</button></div><div class="modal-body"><div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="mMDate"></div><div class="fg"><label>Compte *</label><select id="mMCompte"></select></div></div><div class="fg2"><div class="fg"><label>Type</label><select id="mMType"><option value="entrée">Entrée</option><option value="sortie">Sortie</option><option value="virement interne">Virement interne</option></select></div><div class="fg"><label>Référence</label><input type="text" id="mMRef"></div></div><div class="fg2"><div class="fg"><label>Montant *</label><input type="number" id="mMMontant" min="0"></div><div class="fg"><label>Saisi par</label><input type="text" id="mMSaisie" readonly></div></div><div class="fg1"><div class="fg"><label>Libellé / Notes</label><textarea id="mMNotes" rows="2"></textarea></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mMvt')">Annuler</button><button class="btn btn-green" onclick="saveMvt()">Enregistrer</button></div></div></div>
+<div class="modal-ov" id="mMvt"><div class="modal"><div class="modal-hdr"><div class="modal-title">Mouvement financier</div><button class="close-x" onclick="closeM('mMvt')">✕</button></div><div class="modal-body"><div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="mMDate"></div><div class="fg"><label>Compte *</label><select id="mMCompte"></select></div></div><div class="fg2"><div class="fg"><label>Type</label><select id="mMType"><option value="entrée">Entrée</option><option value="sortie">Sortie</option><option value="virement interne">Virement interne</option></select></div><div class="fg"><label>Référence</label><input type="text" id="mMRef"></div></div><div class="fg2"><div class="fg"><label>Montant *</label><input type="number" id="mMMontant" min="0"></div><div class="fg"><label>Responsable</label><input type="text" id="mMResponsable" placeholder="Nom du responsable…"></div></div><div class="fg1"><div class="fg"><label>Libellé / Notes</label><textarea id="mMNotes" rows="2"></textarea></div></div>
+<div style="background:var(--surface2);border-radius:8px;padding:10px;margin:8px 0">
+  <div style="font-size:.75rem;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:8px">Bénéficiaire (pour reçu)</div>
+  <div class="fg2"><div class="fg"><label>Type</label><select id="mMBenefType"><option value="Particulier">👤 Particulier</option><option value="Société">🏢 Société</option></select></div><div class="fg"><label>Nom / Société</label><input type="text" id="mMBenefNom" placeholder="Nom complet ou raison sociale…"></div></div>
+  <div class="fg2"><div class="fg"><label>CNI / Identifiant</label><input type="text" id="mMBenefCNI" placeholder="N° CNI ou RCCM…"></div><div class="fg"><label>Téléphone</label><input type="text" id="mMBenefTel" placeholder="+225…"></div></div>
+</div>
+<div class="fg"><label>Saisi par</label><input type="text" id="mMSaisie" readonly></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mMvt')">Annuler</button><button class="btn btn-green" onclick="saveMvt()">Enregistrer</button></div></div></div>
 
 <!-- TRANSFERT MM → BANQUE -->
 <div class="modal-ov" id="mTransfert"><div class="modal"><div class="modal-hdr"><div class="modal-title">🔄 Transfert Mobile Money → Banque</div><button class="close-x" onclick="closeM('mTransfert')">✕</button></div><div class="modal-body">
@@ -320,7 +326,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
 <div class="modal-ov" id="mPetiteCaisse"><div class="modal"><div class="modal-hdr"><div class="modal-title" id="pcMTitle">Petite caisse</div><button class="close-x" onclick="closeM('mPetiteCaisse')">✕</button></div><div class="modal-body">
   <input type="hidden" id="pcMType">
   <div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="pcMDate"></div><div class="fg"><label>Montant (FCFA) *</label><input type="number" id="pcMMontant" min="0" placeholder="0"></div></div>
-  <div class="fg2"><div class="fg"><label>Libellé *</label><input type="text" id="pcMLibelle" placeholder="Description de la dépense ou appro…"></div>
+  <div class="fg2"><div class="fg"><label>Libellé *</label><input type="text" id="pcMLibelle" placeholder="Description…"></div>
   <div class="fg"><label>Catégorie</label>
     <select id="pcMCategorie">
       <option value="approvisionnement">Approvisionnement</option>
@@ -332,7 +338,34 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <option value="autre">Autre</option>
     </select>
   </div></div>
+  <div class="fg2">
+    <div class="fg"><label>Mode de paiement</label>
+      <select id="pcModePaiement">
+        <option value="Espèces">💵 Espèces</option>
+        <option value="Chèque">📝 Chèque</option>
+        <option value="Virement">🏦 Virement</option>
+        <option value="Mobile Money">📱 Mobile Money</option>
+      </select>
+    </div>
+    <div class="fg"><label>Responsable dépense</label><input type="text" id="pcResponsable" placeholder="Nom du responsable…"></div>
+  </div>
   <div id="pcCaisseSource" style="display:none"><div class="fg"><label>Débiter depuis</label><select id="pcCaisseId"></select></div></div>
+  <div style="background:var(--surface2);border-radius:8px;padding:10px;margin:8px 0" id="pcBenefSection">
+    <div style="font-size:.75rem;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:8px">Bénéficiaire</div>
+    <div class="fg2">
+      <div class="fg"><label>Type</label>
+        <select id="pcBenefType">
+          <option value="Particulier">👤 Particulier</option>
+          <option value="Société">🏢 Société</option>
+        </select>
+      </div>
+      <div class="fg"><label>Nom / Société *</label><input type="text" id="pcBenefNom" placeholder="Nom complet ou raison sociale…"></div>
+    </div>
+    <div class="fg2">
+      <div class="fg"><label>CNI / Identifiant</label><input type="text" id="pcBenefCNI" placeholder="N° CNI ou RCCM…"></div>
+      <div class="fg"><label>Téléphone</label><input type="text" id="pcBenefTel" placeholder="+225…"></div>
+    </div>
+  </div>
   <div class="fg"><label>Saisi par</label><input type="text" id="pcMSaisie" readonly></div>
 </div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mPetiteCaisse')">Annuler</button><button class="btn btn-green" onclick="savePCMouvement()">Enregistrer</button></div></div></div>
 
