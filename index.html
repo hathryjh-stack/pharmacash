@@ -328,7 +328,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
   <div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="pcMDate"></div><div class="fg"><label>Montant (FCFA) *</label><input type="number" id="pcMMontant" min="0" placeholder="0"></div></div>
   <div class="fg2"><div class="fg"><label>Libellé *</label><input type="text" id="pcMLibelle" placeholder="Description…"></div>
   <div class="fg"><label>Catégorie</label>
-    <select id="pcMCategorie">
+    <select id="pcMCategorie" onchange="onPCCategorieChange()">
       <option value="approvisionnement">Approvisionnement</option>
       <option value="fournitures">Fournitures bureau</option>
       <option value="transport">Transport</option>
@@ -336,6 +336,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <option value="entretien">Entretien / nettoyage</option>
       <option value="communication">Communication</option>
       <option value="autre">Autre</option>
+      <option value="__custom__">✏️ Créer une catégorie…</option>
     </select>
   </div></div>
   <div class="fg2">
