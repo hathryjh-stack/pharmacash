@@ -543,6 +543,18 @@ function openVersModal(){
 }
 window.openVersModal=openVersModal;
 
+function updateLigneMontant(i,val){
+  lignesVersement[i].montant=parseFloat(val)||0;
+  updateTotalVers();
+}
+function updateLigneRef(i,val){ lignesVersement[i].ref=val; }
+function updateLigneType(i,val){ lignesVersement[i].type=val; }
+function updateLigneCompte(i,val){ lignesVersement[i].compte=val; }
+window.updateLigneMontant=updateLigneMontant;
+window.updateLigneRef=updateLigneRef;
+window.updateLigneType=updateLigneType;
+window.updateLigneCompte=updateLigneCompte;
+
 function renderLignesVersement(){
   const container=document.getElementById('lignesVersContainer');
   if(!container)return;
@@ -551,12 +563,12 @@ function renderLignesVersement(){
       <div style="font-size:.72rem;color:var(--text3);margin-bottom:8px">Versement ${i+1}</div>
       <div class="fg2">
         <div class="fg"><label>Type *</label>
-          <select onchange="lignesVersement[${i}].type=this.value">
+          <select onchange="updateLigneType(${i},this.value)">
             ${Object.entries(MM_LABEL).map(([k,v])=>`<option value="${k}"${l.type===k?' selected':''}>${v}</option>`).join('')}
           </select>
         </div>
         <div class="fg"><label>Vers compte *</label>
-          <select onchange="lignesVersement[${i}].compte=this.value">
+          <select onchange="updateLigneCompte(${i},this.value)">
             ${comptes.filter(c=>c.actif!==false).map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
         </div>
@@ -564,12 +576,12 @@ function renderLignesVersement(){
       <div class="fg2">
         <div class="fg"><label>Montant (${DEVISE}) *</label>
           <input type="number" value="${l.montant||''}" placeholder="0" min="0"
-            oninput="lignesVersement[${i}].montant=parseFloat(this.value)||0;updateTotalVers()"
-            onchange="lignesVersement[${i}].montant=parseFloat(this.value)||0;updateTotalVers()">
+            oninput="updateLigneMontant(${i},this.value)"
+            onchange="updateLigneMontant(${i},this.value)">
         </div>
         <div class="fg"><label>Référence</label>
           <input type="text" value="${l.ref||''}" placeholder="N° reçu, réf MM…"
-            oninput="lignesVersement[${i}].ref=this.value">
+            oninput="updateLigneRef(${i},this.value)">
         </div>
       </div>
       ${lignesVersement.length>1?`<button onclick="removeLigneVersement(${i})" style="position:absolute;top:8px;right:8px;background:var(--red-dim);color:var(--red);border:none;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:.75rem">✕</button>`:''}
