@@ -240,10 +240,17 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       </div>
       <!-- ADMIN -->
       <div class="pg" id="pg-admin">
-        <div class="pg-header"><div class="pg-title">Configuration</div></div>
-        <div class="inner-tabs"><div class="inner-tab active" onclick="adminTab('pdv')">Points de vente</div><div class="inner-tab" onclick="adminTab('comptes')">Comptes financiers</div></div>
-        <div id="adm-pdv"><div class="card"><div class="card-header"><span class="card-title">Points de vente & Dépôts</span><button class="btn btn-green btn-sm" onclick="openPDVModal()">+ Ajouter</button></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Type</th><th>Adresse</th><th>Responsable</th><th>Périodicité</th><th>Compte défaut</th><th></th></tr></thead><tbody id="pdvTbody"></tbody></table></div></div></div>
-        <div id="adm-comptes" style="display:none"><div class="card"><div class="card-header"><span class="card-title">Établissements financiers</span><button class="btn btn-green btn-sm" onclick="openCompteModal()">+ Ajouter</button></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Catégorie</th><th>Opérateur</th><th>N° compte</th><th>Solde initial</th><th>Solde actuel</th><th>Dispo</th><th>Statut</th><th></th></tr></thead><tbody id="cptTbody"></tbody></table></div></div></div>
+        <div class="pg-header"><div><div class="pg-title">⚙️ Configuration</div><div class="pg-sub">Paramètres de l'application</div></div></div>
+        <div class="inner-tabs">
+          <div class="inner-tab active" data-tab="pdv" onclick="adminTab('pdv')">📍 Points de vente</div>
+          <div class="inner-tab" data-tab="banques" onclick="adminTab('banques')">🏦 Banques & Caisses</div>
+          <div class="inner-tab" data-tab="mm-tetes" onclick="adminTab('mm-tetes')">🔗 MM Têtes de pont</div>
+          <div class="inner-tab" data-tab="mm-pdv" onclick="adminTab('mm-pdv')">📱 MM par PDV</div>
+        </div>
+        <div id="adm-pdv"><div class="card"><div class="card-header"><span class="card-title">Points de vente & Dépôts</span><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="imprimerConfig('pdv')">🖨️ Imprimer</button><button class="btn btn-green btn-sm" onclick="openPDVModal()">+ Ajouter</button></div></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Type</th><th>Responsable</th><th>Périodicité</th><th>N° MM locaux</th><th>Compte défaut</th><th></th></tr></thead><tbody id="pdvTbody"></tbody></table></div></div></div>
+        <div id="adm-banques" style="display:none"><div class="card"><div class="card-header"><span class="card-title">Banques & Caisses</span><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="imprimerConfig('banques')">🖨️ Imprimer</button><button class="btn btn-green btn-sm" onclick="openCompteModal()">+ Ajouter</button></div></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Opérateur</th><th>N° Compte / RIB</th><th>Notes / IBAN</th><th>Solde actuel</th><th>Statut</th><th></th></tr></thead><tbody id="cptTbody"></tbody></table></div></div></div>
+        <div id="adm-mm-tetes" style="display:none"><div class="card"><div class="card-header"><span class="card-title">Mobile Money — Têtes de pont</span><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="imprimerConfig('mm-tetes')">🖨️ Imprimer</button><button class="btn btn-green btn-sm" onclick="openCompteModal()">+ Ajouter MM</button></div></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Opérateur</th><th>N° Wallet</th><th>Solde actuel</th><th>Tête de pont</th><th>Banque rattachée</th><th></th></tr></thead><tbody id="mmTetesTbody"></tbody></table></div></div></div>
+        <div id="adm-mm-pdv" style="display:none"><div class="card"><div class="card-header"><span class="card-title">Mobile Money — Numéros par dépôt</span><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="imprimerConfig('mm-pdv')">🖨️ Imprimer</button></div></div><div class="tbl-wrap"><table><thead><tr><th>PDV / Dépôt</th><th>🟠 Orange Money</th><th>🟡 MTN MoMo</th><th>🔵 Wave</th><th>🟢 Moov Money</th><th></th></tr></thead><tbody id="mmPDVTbody"></tbody></table></div></div></div>
       </div>
       <!-- UTILISATEURS -->
       <div class="pg" id="pg-utilisateurs">
