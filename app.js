@@ -1257,6 +1257,131 @@ function nombreEnLettres(n){
   return r.trim();
 }
 window.nombreEnLettres=nombreEnLettres;
+
+// ══════════════════════════════════════════════════════
+// CLÔTURE PETITE CAISSE (v4.1)
+// ══════════════════════════════════════════════════════
+function ouvrirCloturePetiteCaisse(){
+  const totAppro=petiteCaisse.filter(m=>m.type==='appro').reduce((s,m)=>s+(m.montant||0),0);
+  const totDepense=petiteCaisse.filter(m=>m.type==='depense').reduce((s,m)=>s+(m.montant||0),0);
+  const soldeTheo=totAppro-totDepense;
+  document.getElementById('pcClotDate').value=today();
+  document.getElementById('pcClotPeriode').value='';
+  document.getElementById('pcClotSoldePhysique').value='';
+  document.getElementById('pcClotNotes').value='';
+  document.getElementById('pcClotResponsable').value='';
+  document.getElementById('pcClotComptable').value='';
+  document.getElementById('pcClotSaisi').value=currentUser.nom;
+  document.getElementById('pcClotTotAppro').textContent=fmt(totAppro)+' '+DEVISE;
+  document.getElementById('pcClotTotDepense').textContent=fmt(totDepense)+' '+DEVISE;
+  document.getElementById('pcClotSoldeTheo').textContent=fmt(soldeTheo)+' '+DEVISE;
+  document.getElementById('pcClotSoldeTheo').style.color=soldeTheo>=0?'var(--cyan)':'var(--red)';
+  document.getElementById('pcClotEcart').textContent='—';
+  document.getElementById('pcClotEcartMsg').textContent='';
+  openM('mCloturePetiteCaisse');
+}
+window.ouvrirCloturePetiteCaisse=ouvrirCloturePetiteCaisse;
+
+function calcEcartPC(){
+  const physique=parseFloat(document.getElementById('pcClotSoldePhysique').value)||0;
+  const totAppro=petiteCaisse.filter(m=>m.type==='appro').reduce((s,m)=>s+(m.montant||0),0);
+  const totDepense=petiteCaisse.filter(m=>m.type==='depense').reduce((s,m)=>s+(m.montant||0),0);
+  const theo=totAppro-totDepense;
+  const ecart=physique-theo;
+  const ecartEl=document.getElementById('pcClotEcart');
+  const ecartMsg=document.getElementById('pcClotEcartMsg');
+  ecartEl.textContent=(ecart>0?'+ ':ecart<0?'− ':'')+fmt(Math.abs(ecart))+' '+DEVISE;
+  ecartEl.style.color=ecart===0?'var(--green)':ecart<0?'var(--red)':'var(--amber)';
+  ecartMsg.textContent=ecart===0?'✓ Caisse équilibrée':ecart<0?'⚠ Manquant — physique < théorique':'⚡ Excédent — physique > théorique';
+}
+window.calcEcartPC=calcEcartPC;
+
+async function saveCloturePetiteCaisse(){
+  const date=document.getElementById('pcClotDate').value;
+  const physique=parseFloat(document.getElementById('pcClotSoldePhysique').value);
+  if(!date||isNaN(physique)){toast('Date et solde physique obligatoires','err');return;}
+  const totAppro=petiteCaisse.filter(m=>m.type==='appro').reduce((s,m)=>s+(m.montant||0),0);
+  const totDepense=petiteCaisse.filter(m=>m.type==='depense').reduce((s,m)=>s+(m.montant||0),0);
+  const theo=totAppro-totDepense;
+  const ecart=physique-theo;
+  const clot={id:uid(),date,
+    periode:document.getElementById('pcClotPeriode').value,
+    totAppro,totDepense,soldeTheorique:theo,
+    soldePhysique:physique,ecart,
+    notes:document.getElementById('pcClotNotes').value,
+    responsable:document.getElementById('pcClotResponsable').value,
+    comptable:document.getElementById('pcClotComptable').value,
+    saisie:currentUser.nom,ts:Date.now()};
+  await saveItem('cloturePetiteCaisse',clot);
+  closeM('mCloturePetiteCaisse');
+  toast(`Clôture petite caisse enregistrée ✓ — Écart : ${ecart===0?'Néant':fmt(Math.abs(ecart))+' '+DEVISE}`);
+  setTimeout(()=>{if(confirm('Imprimer le rapport de clôture ?'))imprimerCloturePetiteCaisse(clot);},300);
+}
+window.saveCloturePetiteCaisse=saveCloturePetiteCaisse;
+
+function imprimerCloturePetiteCaisse(data){
+  const date=data?.date||document.getElementById('pcClotDate').value;
+  const periode=data?.periode||document.getElementById('pcClotPeriode').value||'';
+  const physique=data?.soldePhysique!=null?data.soldePhysique:(parseFloat(document.getElementById('pcClotSoldePhysique').value)||0);
+  const totAppro=data?.totAppro??petiteCaisse.filter(m=>m.type==='appro').reduce((s,m)=>s+(m.montant||0),0);
+  const totDepense=data?.totDepense??petiteCaisse.filter(m=>m.type==='depense').reduce((s,m)=>s+(m.montant||0),0);
+  const theo=data?.soldeTheorique??(totAppro-totDepense);
+  const ecart=data?.ecart??(physique-theo);
+  const responsable=data?.responsable||document.getElementById('pcClotResponsable')?.value||'';
+  const comptable=data?.comptable||document.getElementById('pcClotComptable')?.value||'';
+  const notes=data?.notes||document.getElementById('pcClotNotes')?.value||'';
+  const mouvements=[...petiteCaisse].sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
+  const ecartCol=ecart===0?'#00C47A':ecart<0?'#f05050':'#f5a623';
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Clôture Petite Caisse</title>
+  <style>@page{size:A4;margin:12mm}body{font-family:Arial,sans-serif;font-size:10pt;color:#111}
+  h2{color:#00C47A;margin:0 0 4px}.header{display:flex;justify-content:space-between;border-bottom:2px solid #00C47A;padding-bottom:10px;margin-bottom:14px}
+  .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+  .kpi-box{border:1px solid #eee;border-radius:6px;padding:8px;text-align:center}
+  .kpi-label{font-size:7pt;color:#999;text-transform:uppercase}.kpi-val{font-size:13pt;font-weight:800}
+  table{width:100%;border-collapse:collapse;font-size:8.5pt;margin-bottom:12px}
+  th{background:#f5f5f5;padding:5px 6px;text-align:left;border:1px solid #ddd}td{padding:4px 6px;border:1px solid #eee}
+  .sigs{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:28px}
+  .sig{border-top:1px solid #ccc;padding-top:6px;text-align:center;font-size:8pt;color:#666}
+  .ecart-box{background:${ecartCol}22;border:2px solid ${ecartCol};border-radius:8px;padding:10px;text-align:center;margin:10px 0}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style>
+  </head><body>
+  <div class="header"><div><h2>${PHARMACIE_NOM}</h2><div style="font-size:9pt;color:#666">CLÔTURE PETITE CAISSE${periode?' — '+periode:''}</div></div>
+  <div style="text-align:right;font-size:8pt;color:#666">Date clôture : ${fmtD(date)}<br>Imprimé le ${new Date().toLocaleString('fr-FR')}</div></div>
+  <div class="kpi">
+    <div class="kpi-box"><div class="kpi-label">Total appros</div><div class="kpi-val" style="color:#00C47A">${fmt(totAppro)}</div><div style="font-size:7pt;color:#999">FCFA</div></div>
+    <div class="kpi-box"><div class="kpi-label">Total dépenses</div><div class="kpi-val" style="color:#f05050">${fmt(totDepense)}</div><div style="font-size:7pt;color:#999">FCFA</div></div>
+    <div class="kpi-box"><div class="kpi-label">Solde théorique</div><div class="kpi-val" style="color:#22d3ee">${fmt(theo)}</div><div style="font-size:7pt;color:#999">FCFA</div></div>
+    <div class="kpi-box"><div class="kpi-label">Solde physique</div><div class="kpi-val" style="color:#4d8af0">${fmt(physique)}</div><div style="font-size:7pt;color:#999">FCFA</div></div>
+  </div>
+  <div class="ecart-box">
+    <div style="font-size:8pt;color:${ecartCol};text-transform:uppercase;font-weight:700">Écart constaté</div>
+    <div style="font-size:16pt;font-weight:800;color:${ecartCol}">${ecart===0?'NÉANT':(ecart>0?'+ ':ecart<0?'− ':'')+fmt(Math.abs(ecart))+' FCFA'}</div>
+    <div style="font-size:9pt;color:${ecartCol}">${ecart===0?'✓ Caisse équilibrée':ecart<0?'⚠ Manquant':'⚡ Excédent'}</div>
+  </div>
+  ${notes?`<div style="margin-bottom:10px;padding:8px;background:#f9f9f9;border-radius:6px;font-size:9pt"><b>Observations :</b> ${notes}</div>`:''}
+  <div style="font-weight:700;font-size:9pt;text-transform:uppercase;color:#555;margin-bottom:6px">Détail des mouvements (${mouvements.length})</div>
+  <table><thead><tr><th>Date</th><th>Type</th><th>Libellé</th><th>Catégorie</th><th>Référence</th><th>Montant</th><th>Solde après</th></tr></thead>
+  <tbody>${mouvements.map((m,i)=>`<tr style="background:${i%2?'#fafafa':'#fff'}">
+    <td>${fmtD(m.date)} ${m.heure||''}</td>
+    <td style="color:${m.type==='appro'?'#00C47A':'#f05050'};font-weight:700">${m.type==='appro'?'Appro':'Dépense'}</td>
+    <td>${m.libelle||'—'}</td><td>${m.categorie||'—'}</td>
+    <td style="font-family:monospace;font-size:7.5pt">${m.ref||'—'}</td>
+    <td style="color:${m.type==='appro'?'#00C47A':'#f05050'};font-weight:700">${m.type==='appro'?'+':'-'}${fmt(m.montant)}</td>
+    <td style="font-weight:600">${fmt(m.soldeApres||0)}</td>
+  </tr>`).join('')}
+  <tr style="background:#e8f5f0;font-weight:700"><td colspan="5">SOLDE FINAL THÉORIQUE</td><td colspan="2" style="color:#22d3ee">${fmt(theo)} FCFA</td></tr>
+  </tbody></table>
+  <div class="sigs">
+    <div class="sig"><div style="height:40px"></div><div style="border-top:1px dotted #ccc;padding-top:4px">${responsable||'_______________'}</div><div style="font-size:7pt;color:#aaa">Responsable caisse</div></div>
+    <div class="sig"><div style="height:40px"></div><div style="border-top:1px dotted #ccc;padding-top:4px">${comptable||'_______________'}</div><div style="font-size:7pt;color:#aaa">Comptable</div></div>
+  </div>
+  <div style="margin-top:14px;font-size:7pt;color:#aaa;text-align:center">PharmaCash Pro — Clôture petite caisse — ${new Date().toLocaleString('fr-FR')}</div>
+  <script>window.onload=()=>window.print()<\/script></body></html>`);
+  w.document.close();
+}
+window.imprimerCloturePetiteCaisse=imprimerCloturePetiteCaisse;
+
 function onPeriodeChange(){
   const p=document.getElementById('rPeriode').value;
   document.getElementById('rCustomDates').style.display=p==='custom'?'flex':'none';
