@@ -423,19 +423,24 @@ function openRecetteModal(){
   openM('mRecette');
 }
 window.openRecetteModal=openRecetteModal;
+let _recSaving=false;
 async function saveRecette(){
-  const date=document.getElementById('mRDate').value,pdv=document.getElementById('mRPDV').value,
-    canal=document.getElementById('mRCanal').value,montant=parseFloat(document.getElementById('mRMontant').value);
-  if(!date||!pdv||!canal||!montant){toast('Champs obligatoires manquants','err');return;}
-  // Anti-doublons
-  const doublon=recettes.find(r=>r.pdv===pdv&&r.date===date&&Math.abs((r.montant||0)-montant)<montant*0.01);
-  if(doublon&&!confirm(`⚠️ Doublon possible !\nUne recette similaire existe déjà pour ce PDV à cette date :\n${fmtD(doublon.date)} — ${fmt(doublon.montant)} ${DEVISE}\n\nConfirmer quand même ?`))return;
-  const item={id:uid(),date,heure:document.getElementById('mRHeure').value,pdv,
-    type:document.getElementById('mRType').value,canal,montant,
-    ref:document.getElementById('mRRef').value,saisie:document.getElementById('mRSaisie').value,
-    notes:document.getElementById('mRNotes').value,ts:Date.now()};
-  recettes.push(item);await saveItem('recettes',item);
-  closeM('mRecette');toast('Recette enregistrée ✓');renderRecettes();renderDashboard();
+  if(_recSaving){toast('Enregistrement en cours…','info');return;}
+  _recSaving=true;
+  try{
+    const date=document.getElementById('mRDate').value,pdv=document.getElementById('mRPDV').value,
+      canal=document.getElementById('mRCanal').value,montant=parseFloat(document.getElementById('mRMontant').value);
+    if(!date||!pdv||!canal||!montant){toast('Champs obligatoires manquants','err');return;}
+    // Anti-doublons général : même PDV + même date + même canal + montant similaire (±1%)
+    const doublon=recettes.find(r=>r.pdv===pdv&&r.date===date&&r.canal===canal&&Math.abs((r.montant||0)-montant)<=montant*0.01);
+    if(doublon&&!confirm(`⚠️ Doublon détecté !\nUne recette identique existe déjà :\n${fmtD(doublon.date)} — ${pdvs.find(p=>p.id===pdv)?.nom||pdv} — ${MM_LABEL[canal]||canal} — ${fmt(doublon.montant)} ${DEVISE}\n\nConfirmer quand même ?`)){_recSaving=false;return;}
+    const item={id:uid(),date,heure:document.getElementById('mRHeure').value,pdv,
+      type:document.getElementById('mRType').value,canal,montant,
+      ref:document.getElementById('mRRef').value,saisie:document.getElementById('mRSaisie').value,
+      notes:document.getElementById('mRNotes').value,ts:Date.now()};
+    recettes.push(item);await saveItem('recettes',item);
+    closeM('mRecette');toast('Recette enregistrée ✓');renderRecettes();renderDashboard();
+  } finally { _recSaving=false; }
 }
 window.saveRecette=saveRecette;
 async function delRecette(id){
@@ -450,31 +455,40 @@ function openSMSModal(){
   document.getElementById('smsResult').style.display='none';
   document.getElementById('btnSaveSMS').style.display='none';
   document.getElementById('smsDate').value=today();
+  document.getElementById('smsMontant').value='';
+  document.getElementById('smsRef') && (document.getElementById('smsRef').value='');
   document.getElementById('smsPDV').innerHTML=pdvs.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
+  document.getElementById('smsCanal').value='CASH';
   openM('mSMS');
 }
 window.openSMSModal=openSMSModal;
+function _detectPDV(txt){
+  const normalize=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,' ').trim();
+  const loNorm=normalize(txt);
+  let detPDV=pdvs[0]?.id;
+  let bestScore=0;
+  pdvs.forEach(p=>{
+    const words=normalize(p.nom).split(' ').filter(w=>w.length>2);
+    // Score pondéré par longueur du mot — les mots longs comptent plus
+    let score=0;
+    words.forEach(w=>{
+      if(loNorm.includes(w)) score+=w.length; // poids = longueur du mot
+    });
+    if(score>bestScore){bestScore=score;detPDV=p.id;}
+  });
+  return detPDV;
+}
+window._detectPDV=_detectPDV;
 function parseSMS(){
   const txt=document.getElementById('smsTxt').value;
   if(!txt.trim()){toast('Colle un SMS ou message WhatsApp','err');return;}
-  // Montant : reconnaît 178.300 ou 178 300 comme 178300
   const txtNorm=txt.replace(/(\d)\.(\d{3})/g,'$1$2').replace(/(\d)\s(\d{3})/g,'$1$2');
   const nums=(txtNorm.match(/\d+/g)||[]).map(n=>parseInt(n)).filter(n=>n>100&&n<999999999);
   const montant=nums.length?Math.max(...nums):0;
   const dm=txt.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.]?(\d{2,4})?/);
   if(dm){const[,j,m,y]=dm;const yr=y?(y.length===2?'20'+y:y):new Date().getFullYear();
     document.getElementById('smsDate').value=`${yr}-${m.padStart(2,'0')}-${j.padStart(2,'0')}`;}
-  // PDV : détection phonétique avec normalisation accents
-  const normalize=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,' ').trim();
-  const loNorm=normalize(txt);
-  let detPDV=pdvs[0]?.id;
-  let bestScore=0;
-  pdvs.forEach(p=>{
-    const words=normalize(p.nom).split(' ').filter(w=>w.length>3);
-    const score=words.filter(w=>loNorm.includes(w)).length;
-    if(score>bestScore){bestScore=score;detPDV=p.id;}
-  });
-  document.getElementById('smsPDV').value=detPDV;
+  document.getElementById('smsPDV').value=_detectPDV(txt);
   let detCanal='CASH';
   if(/orange/i.test(txt))detCanal='OM';else if(/mtn/i.test(txt))detCanal='MTN';
   else if(/wave/i.test(txt))detCanal='WAVE';else if(/moov/i.test(txt))detCanal='MOOV';
@@ -489,6 +503,9 @@ async function saveSMSRecette(){
   const pdv=document.getElementById('smsPDV').value,date=document.getElementById('smsDate').value,
     montant=parseFloat(document.getElementById('smsMontant').value),canal=document.getElementById('smsCanal').value;
   if(!date||!pdv||!montant){toast('Données incomplètes','err');return;}
+  // Anti-doublons général
+  const doublon=recettes.find(r=>r.pdv===pdv&&r.date===date&&r.canal===canal&&Math.abs((r.montant||0)-montant)<=montant*0.01);
+  if(doublon&&!confirm(`⚠️ Doublon détecté !\nRecette identique déjà saisie :\n${fmtD(doublon.date)} — ${pdvs.find(p=>p.id===pdv)?.nom||pdv} — ${MM_LABEL[canal]||canal} — ${fmt(doublon.montant)} ${DEVISE}\n\nConfirmer quand même ?`))return;
   const item={id:uid(),date,heure:nowTm(),pdv,type:'vente comptoir',canal,montant,
     ref:'Via SMS/WhatsApp',saisie:currentUser.nom,
     notes:document.getElementById('smsTxt').value.slice(0,200),ts:Date.now()};
@@ -535,6 +552,11 @@ function openSMSVersModal(){
   document.getElementById('smsVersResult').style.display='none';
   document.getElementById('btnSaveSMSVers').style.display='none';
   document.getElementById('smsDateVers').value=today();
+  document.getElementById('smsMontantVers').value='';
+  document.getElementById('smsRefVers').value='';
+  document.getElementById('smsCanalVers').value='OM';
+  document.getElementById('smsFreqVers').value='quotidien';
+  document.getElementById('smsStatutVers').value='en attente';
   document.getElementById('smsPDVVers').innerHTML=pdvs.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
   document.getElementById('smsCptVers').innerHTML=comptes.filter(c=>c.actif!==false).map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
   openM('mSMSVers');
@@ -552,16 +574,8 @@ function parseSMSVers(){
   const dm=txt.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.]?(\d{2,4})?/);
   if(dm){const[,j,m,y]=dm;const yr=y?(y.length===2?'20'+y:y):new Date().getFullYear();
     document.getElementById('smsDateVers').value=`${yr}-${m.padStart(2,'0')}-${j.padStart(2,'0')}`;}
-  // PDV : détection phonétique
-  const normalize=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,' ').trim();
-  const loNorm=normalize(txt);
-  let detPDV=pdvs[0]?.id;let bestScore=0;
-  pdvs.forEach(p=>{
-    const words=normalize(p.nom).split(' ').filter(w=>w.length>3);
-    const score=words.filter(w=>loNorm.includes(w)).length;
-    if(score>bestScore){bestScore=score;detPDV=p.id;}
-  });
-  document.getElementById('smsPDVVers').value=detPDV;
+  // PDV : détection phonétique pondérée
+  document.getElementById('smsPDVVers').value=_detectPDV(txt);
   // Type versement
   let detCanal='OM';
   if(/orange|om/i.test(txt))detCanal='OM';
@@ -595,9 +609,9 @@ async function saveSMSVersement(){
   const freq=document.getElementById('smsFreqVers').value;
   const statut=document.getElementById('smsStatutVers').value;
   if(!date||!pdv||!montant){toast('Données incomplètes','err');return;}
-  // Anti-doublons
-  const doublon=versements.find(v=>v.pdv===pdv&&v.date===date&&Math.abs((v.montant||0)-montant)<montant*0.01);
-  if(doublon&&!confirm(`⚠️ Doublon possible !\nVersement similaire déjà saisi :\n${fmtD(doublon.date)} — ${fmt(doublon.montant)} ${DEVISE}\n\nConfirmer quand même ?`))return;
+  // Anti-doublons général
+  const doublon=versements.find(v=>v.pdv===pdv&&v.date===date&&Math.abs((v.montant||0)-montant)<=montant*0.01);
+  if(doublon&&!confirm(`⚠️ Doublon détecté !\nVersement identique déjà saisi :\n${fmtD(doublon.date)} — ${pdvs.find(p=>p.id===pdv)?.nom||pdv} — ${fmt(doublon.montant)} ${DEVISE} — ${doublon.statut}\n\nConfirmer quand même ?`))return;
   const item={id:uid(),date,pdv,freq,type,compte,ref,montant,statut,
     saisie:currentUser.nom,notes:'Via SMS/WhatsApp\n'+document.getElementById('smsTxtVers').value.slice(0,200),ts:Date.now()};
   versements.push(item);
@@ -680,28 +694,33 @@ function updateTotalVers(){
 }
 window.updateTotalVers=updateTotalVers;
 
+let _versSaving=false;
 async function saveVersements(){
-  const date=document.getElementById('mVDate2').value;
-  const pdv=document.getElementById('mVPDV2').value;
-  const statut=document.getElementById('mVStatut2').value;
-  const saisie=document.getElementById('mVSaisie2').value;
-  const freq=document.getElementById('mVFreq2')?.value||'quotidien';
-  if(!date||!pdv){toast('Date et PDV obligatoires','err');return;}
-  const valides=lignesVersement.filter(l=>l.montant>0&&l.compte);
-  if(!valides.length){toast('Ajoute au moins un versement avec un montant','err');return;}
-  // Anti-doublons
-  const totalNouv=valides.reduce((s,l)=>s+l.montant,0);
-  const doublon=versements.find(v=>v.pdv===pdv&&v.date===date&&Math.abs((v.montant||0)-totalNouv)<totalNouv*0.01);
-  if(doublon&&!confirm(`⚠️ Doublon possible !\nUn versement similaire existe déjà pour ce PDV à cette date :\n${fmtD(doublon.date)} — ${fmt(doublon.montant)} ${DEVISE}\n\nConfirmer quand même ?`))return;
-  for(const l of valides){
-    const item={id:uid(),date,pdv,freq,type:l.type,compte:l.compte,ref:l.ref||'',
-      montant:l.montant,statut,saisie,notes:'',ts:Date.now()};
-    versements.push(item);
-    if(statut==='confirmé')await crediterCompte(l.compte,l.montant,pdv,l.ref,date);
-    await saveItem('versements',item);
-  }
-  closeM('mVers2');toast(`${valides.length} versement(s) enregistré(s) ✓`);
-  renderVersements();renderDashboard();
+  if(_versSaving){toast('Enregistrement en cours…','info');return;}
+  _versSaving=true;
+  try{
+    const date=document.getElementById('mVDate2').value;
+    const pdv=document.getElementById('mVPDV2').value;
+    const statut=document.getElementById('mVStatut2').value;
+    const saisie=document.getElementById('mVSaisie2').value;
+    const freq=document.getElementById('mVFreq2')?.value||'quotidien';
+    if(!date||!pdv){toast('Date et PDV obligatoires','err');return;}
+    const valides=lignesVersement.filter(l=>l.montant>0&&l.compte);
+    if(!valides.length){toast('Ajoute au moins un versement avec un montant','err');return;}
+    const totalNouv=valides.reduce((s,l)=>s+l.montant,0);
+    // Anti-doublons général : même PDV + même date + montant similaire (±1%)
+    const doublon=versements.find(v=>v.pdv===pdv&&v.date===date&&Math.abs((v.montant||0)-totalNouv)<=totalNouv*0.01);
+    if(doublon&&!confirm(`⚠️ Doublon détecté !\nUn versement identique existe déjà :\n${fmtD(doublon.date)} — ${pdvs.find(p=>p.id===pdv)?.nom||pdv} — ${fmt(doublon.montant)} ${DEVISE} — Statut: ${doublon.statut}\n\nConfirmer quand même ?`)){_versSaving=false;return;}
+    for(const l of valides){
+      const item={id:uid(),date,pdv,freq,type:l.type,compte:l.compte,ref:l.ref||'',
+        montant:l.montant,statut,saisie,notes:'',ts:Date.now()};
+      versements.push(item);
+      if(statut==='confirmé')await crediterCompte(l.compte,l.montant,pdv,l.ref,date);
+      await saveItem('versements',item);
+    }
+    closeM('mVers2');toast(`${valides.length} versement(s) enregistré(s) ✓`);
+    renderVersements();renderDashboard();
+  } finally { _versSaving=false; }
 }
 window.saveVersements=saveVersements;
 
@@ -956,6 +975,9 @@ async function saveMvt(){
   const date=document.getElementById('mMDate').value,compteId=document.getElementById('mMCompte').value,
     type=document.getElementById('mMType').value,montant=parseFloat(document.getElementById('mMMontant').value);
   if(!date||!compteId||!montant){toast('Champs manquants','err');return;}
+  // Anti-doublons général sur les mouvements
+  const doublonMvt=mvts.find(m=>m.compte===compteId&&m.date===date&&m.type===type&&Math.abs((m.montant||0)-montant)<=montant*0.01);
+  if(doublonMvt&&!confirm(`⚠️ Doublon détecté !\nMouvement identique déjà enregistré :\n${fmtD(doublonMvt.date)} — ${comptes.find(c=>c.id===compteId)?.nom||compteId} — ${type} — ${fmt(doublonMvt.montant)} ${DEVISE}\n\nConfirmer quand même ?`))return;
   const c=comptes.find(x=>x.id===compteId);
   if(c){if(type==='entrée')c.solde=(c.solde||0)+montant;else if(type==='sortie')c.solde=(c.solde||0)-montant;await saveItem('comptes',c);}
   const benef_nom=document.getElementById('mMBenefNom')?.value.trim()||'';
@@ -1451,12 +1473,13 @@ function renderPetiteCaisse(){
     return{...m,soldeApres:running};
   }).reverse();
   tbody.innerHTML=rows.map(m=>`<tr>
-    <td>${fmtD(m.date)}</td>
+    <td>${fmtD(m.date)} ${m.heure||''}</td>
     <td><span class="badge ${m.type==='appro'?'bg':'br'}">${m.type==='appro'?'Approvisionnement':'Dépense'}</span></td>
     <td style="font-size:.82rem">${m.libelle||'—'}</td>
     <td style="font-size:.78rem;color:var(--text2)">${m.categorie||'—'}</td>
     <td class="amt ${m.type==='appro'?'pos':'neg'}">${m.type==='appro'?'+':'-'}${fmt(m.montant)}</td>
     <td class="amt">${fmt(m.soldeApres)}</td>
+    <td style="font-size:.68rem;color:var(--text3);font-family:monospace">${m.ref||'—'}</td>
     <td style="font-size:.75rem;color:var(--text2)">${m.saisie||'—'}</td>
   </tr>`).join('');
 }
@@ -1507,54 +1530,70 @@ function onPCCategorieChange(){
 }
 window.onPCCategorieChange=onPCCategorieChange;
 
+let _pcSaving=false;
 async function savePCMouvement(){
-  const type=document.getElementById('pcMType').value;
-  const date=document.getElementById('pcMDate').value;
-  const montant=parseFloat(document.getElementById('pcMMontant').value);
-  const libelle=document.getElementById('pcMLibelle').value.trim();
-  if(!date||!montant){toast('Date et montant obligatoires','err');return;}
-  const benef_nom=document.getElementById('pcBenefNom')?.value.trim()||'';
-  const benef_type=document.getElementById('pcBenefType')?.value||'Particulier';
-  const benef_cni=document.getElementById('pcBenefCNI')?.value.trim()||'';
-  const benef_tel=document.getElementById('pcBenefTel')?.value.trim()||'';
-  const responsable=document.getElementById('pcResponsable')?.value.trim()||currentUser.nom;
-  const modePaiement=document.getElementById('pcModePaiement')?.value||'Espèces';
-  // Si appro : débite la caisse principale
-  if(type==='appro'){
-    const caisseEl=document.getElementById('pcCaisseId');
-    if(caisseEl&&caisseEl.value){
-      const c=comptes.find(x=>x.id===caisseEl.value);
-      if(c){
-        c.solde=(c.solde||0)-montant;
-        await saveItem('comptes',c);
-        const m={id:uid(),date,compte:c.id,type:'sortie',
-          libelle:`Appro petite caisse${libelle?' — '+libelle:''}`,
-          ref:'',montant,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
-        mvts.push(m);await saveItem('mvts',m);
+  if(_pcSaving){toast('Enregistrement en cours…','info');return;}
+  _pcSaving=true;
+  try{
+    const type=document.getElementById('pcMType').value;
+    const date=document.getElementById('pcMDate').value;
+    const montant=parseFloat(document.getElementById('pcMMontant').value);
+    const libelle=document.getElementById('pcMLibelle').value.trim();
+    if(!date||!montant){toast('Date et montant obligatoires','err');return;}
+    // Référence unique automatique : date + heure + random
+    const now=new Date();
+    const refAuto=`PC-${date.replace(/-/g,'')}-${now.getHours().toString().padStart(2,'0')}${now.getMinutes().toString().padStart(2,'0')}${now.getSeconds().toString().padStart(2,'0')}-${Math.random().toString(36).slice(2,5).toUpperCase()}`;
+    // Anti-doublons général : même libellé + même montant + même date (sans limite de temps)
+    const recently=petiteCaisse.filter(m=>m.date===date&&m.montant===montant&&m.type===type&&m.libelle===libelle);
+    if(recently.length>0){
+      if(!confirm(`⚠️ Doublon détecté !\nUne opération identique existe déjà :\n${recently[0].ref||''} — ${fmtD(date)} — ${libelle} — ${fmt(montant)} ${DEVISE}\n\nConfirmer quand même ?`)){_pcSaving=false;return;}
+    }
+    const benef_nom=document.getElementById('pcBenefNom')?.value.trim()||'';
+    const benef_type=document.getElementById('pcBenefType')?.value||'Particulier';
+    const benef_cni=document.getElementById('pcBenefCNI')?.value.trim()||'';
+    const benef_tel=document.getElementById('pcBenefTel')?.value.trim()||'';
+    const responsable=document.getElementById('pcResponsable')?.value.trim()||currentUser.nom;
+    const modePaiement=document.getElementById('pcModePaiement')?.value||'Espèces';
+    // Si appro : débite la caisse principale
+    if(type==='appro'){
+      const caisseEl=document.getElementById('pcCaisseId');
+      if(caisseEl&&caisseEl.value){
+        const c=comptes.find(x=>x.id===caisseEl.value);
+        if(c){
+          c.solde=(c.solde||0)-montant;
+          await saveItem('comptes',c);
+          const m={id:uid(),date,compte:c.id,type:'sortie',
+            libelle:`Appro petite caisse${libelle?' — '+libelle:''}`,
+            ref:refAuto,montant,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
+          mvts.push(m);await saveItem('mvts',m);
+        }
       }
     }
-  }
-  const item={id:uid(),date,type,libelle,
-    categorie:document.getElementById('pcMCategorie').value,
-    modePaiement,responsable,
-    benef_nom,benef_type,benef_cni,benef_tel,
-    montant,saisie:currentUser.nom,notes:'',ts:Date.now()};
-  petiteCaisse.push(item);await saveItem('petiteCaisse',item);
-  closeM('mPetiteCaisse');
-  toast(type==='appro'?'Approvisionnement enregistré ✓':'Dépense enregistrée ✓');
-  renderPetiteCaisse();renderDashboard();
-  // Générer reçu automatiquement pour les dépenses
-  if(type==='depense'){
-    if(confirm('Imprimer le reçu de caisse ?')){
-      genererRecuCaisse({
-        date,heure:nowTm(),libelle,
-        categorie:item.categorie,
-        modePaiement,ref:'',
-        montant,typeRecu:'Dépense petite caisse',
-        caisse:'Petite caisse',
-        responsable,benef_nom,benef_type,benef_cni,benef_tel
-      });
+    const item={id:uid(),date,heure:`${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`,
+      type,libelle,ref:refAuto,
+      categorie:document.getElementById('pcMCategorie').value,
+      modePaiement,responsable,
+      benef_nom,benef_type,benef_cni,benef_tel,
+      montant,saisie:currentUser.nom,notes:'',ts:Date.now()};
+    petiteCaisse.push(item);await saveItem('petiteCaisse',item);
+    closeM('mPetiteCaisse');
+    toast(type==='appro'?`Approvisionnement enregistré ✓ — Réf: ${refAuto}`:`Dépense enregistrée ✓ — Réf: ${refAuto}`);
+    renderPetiteCaisse();renderDashboard();
+    // Générer reçu automatiquement pour les dépenses
+    if(type==='depense'){
+      if(confirm('Imprimer le reçu de caisse ?')){
+        genererRecuCaisse({
+          date,heure:item.heure,libelle,
+          categorie:item.categorie,
+          modePaiement,ref:refAuto,
+          montant,typeRecu:'Dépense petite caisse',
+          caisse:'Petite caisse',
+          responsable,benef_nom,benef_type,benef_cni,benef_tel
+        });
+      }
     }
+  } finally {
+    _pcSaving=false;
   }
 }
 window.savePCMouvement=savePCMouvement;
