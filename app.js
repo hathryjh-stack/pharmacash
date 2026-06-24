@@ -1312,42 +1312,126 @@ window.renderRapport=renderRapport;
 // ADMIN — CONFIG
 // ══════════════════════════════════════════════════════
 function adminTab(name){
-  document.querySelectorAll('#pg-admin .inner-tab').forEach((t,i)=>t.classList.toggle('active',['pdv','comptes'][i]===name));
-  document.getElementById('adm-pdv').style.display=name==='pdv'?'block':'none';
-  document.getElementById('adm-comptes').style.display=name==='comptes'?'block':'none';
+  const tabs=['pdv','banques','mm-tetes','mm-pdv'];
+  tabs.forEach(t=>{
+    document.getElementById('adm-'+t).style.display=t===name?'block':'none';
+  });
+  document.querySelectorAll('#pg-admin .inner-tab').forEach(t=>{
+    t.classList.toggle('active',t.dataset.tab===name);
+  });
+  if(name==='mm-tetes') renderAdminMMTetes();
+  if(name==='mm-pdv') renderAdminMMPDV();
 }
 window.adminTab=adminTab;
+
 function renderAdmin(){
   adminTab('pdv');
+  // PDV
   document.getElementById('pdvTbody').innerHTML=pdvs.map(p=>{
     let ps=FREQ_LABEL[p.freq]||p.freq;
     if((p.freq==='hebdomadaire'||p.freq==='bimensuel')&&p.jours?.length)ps+=` (${p.jours.map(j=>JOURS_NOM[j]).join(',')})`;
     if(p.freq==='mensuel'&&p.jourMois)ps+=` j${p.jourMois}`;if(p.heure)ps+=` ≤${p.heure}`;
     const cd=comptes.find(c=>c.id===p.compteDefaut);
+    const mmNums=[p.numOM?`🟠${p.numOM}`:'',p.numMTN?`🟡${p.numMTN}`:'',p.numWave?`🔵${p.numWave}`:'',p.numMoov?`🟢${p.numMoov}`:''].filter(Boolean).join(' ');
     return`<tr><td><b>${p.nom}</b></td><td><span class="badge ${p.type==='principale'?'bg':'bb'}">${p.type}</span></td>
-    <td style="color:var(--text2);font-size:.78rem">${p.addr||'—'}</td>
     <td style="color:var(--text2);font-size:.78rem">${p.resp||'—'}</td>
     <td><span class="wk">${ps}</span></td>
+    <td style="font-size:.7rem;color:var(--text2)">${mmNums||'—'}</td>
     <td style="font-size:.72rem;color:var(--text2)">${cd?cd.nom:'—'}</td>
     <td><button class="btn btn-ghost btn-xs" onclick="editPDV('${p.id}')">✏️</button>
     <button class="btn btn-red btn-xs" onclick="delPDV('${p.id}')">✕</button></td></tr>`;
   }).join('');
-  document.getElementById('cptTbody').innerHTML=comptes.map(c=>{
+  // BANQUES
+  document.getElementById('cptTbody').innerHTML=comptes.filter(c=>c.cat==='banque').map(c=>{
     const op=c.op==='AUTRE'&&c.opLibre?c.opLibre:c.op;
     const dot=c.color?`<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${c.color};margin-right:5px;vertical-align:middle"></span>`:'';
     return`<tr><td>${dot}<b>${c.nom}</b></td>
-    <td><span class="badge ${c.cat==='mobile_money'?'bc':c.cat==='banque'?'bb':'bg'}">${c.cat}</span></td>
-    <td>${OP_ICONS[c.op]||'💳'} ${op}</td>
-    <td style="color:var(--text2);font-size:.75rem;font-family:monospace">${c.num||'—'}</td>
-    <td class="amt">${fmt(c.soldeInit)}</td>
+    <td>${OP_ICONS[c.op]||'🏦'} ${op}</td>
+    <td style="font-size:.75rem;color:var(--text2);font-family:monospace">${c.num||'—'}</td>
+    <td style="font-size:.72rem;color:var(--text2)">${c.notes||'—'}</td>
     <td class="amt ${(c.solde||0)>=0?'pos':'neg'}">${fmt(c.solde)}</td>
-    <td>${dispoBadge(c)}</td>
     <td><span class="badge ${c.actif!==false?'bg':'br'}">${c.actif!==false?'Actif':'Inactif'}</span></td>
     <td><button class="btn btn-ghost btn-xs" onclick="editCompte('${c.id}')">✏️</button>
     <button class="btn btn-red btn-xs" onclick="delCompte('${c.id}')">✕</button></td></tr>`;
-  }).join('');
+  }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text3)">Aucune banque configurée</td></tr>';
+  // CAISSES dans banques aussi
+  document.getElementById('cptTbody').innerHTML+=comptes.filter(c=>c.cat==='caisse').map(c=>`<tr>
+    <td>💵 <b>${c.nom}</b></td><td>Caisse espèces</td>
+    <td style="font-size:.75rem;color:var(--text2)">—</td>
+    <td style="font-size:.72rem;color:var(--text2)">${c.notes||'—'}</td>
+    <td class="amt ${(c.solde||0)>=0?'pos':'neg'}">${fmt(c.solde)}</td>
+    <td><span class="badge bg">Actif</span></td>
+    <td><button class="btn btn-ghost btn-xs" onclick="editCompte('${c.id}')">✏️</button>
+    <button class="btn btn-red btn-xs" onclick="delCompte('${c.id}')">✕</button></td></tr>`).join('');
 }
 window.renderAdmin=renderAdmin;
+
+function renderAdminMMTetes(){
+  const mm=comptes.filter(c=>c.cat==='mobile_money');
+  document.getElementById('mmTetesTbody').innerHTML=mm.map(c=>{
+    const banque=c.banqueRattachee?comptes.find(b=>b.id===c.banqueRattachee):null;
+    return`<tr>
+      <td>${OP_ICONS[c.op]||'📱'} <b>${c.nom}</b></td>
+      <td>${c.op}</td>
+      <td style="font-size:.78rem;font-family:monospace">${c.num||'—'}</td>
+      <td class="amt ${(c.solde||0)>=0?'pos':'neg'}">${fmt(c.solde)}</td>
+      <td><span class="badge ${c.tetePont?'bg':'ba'}">${c.tetePont?'✓ Tête de pont':'—'}</span></td>
+      <td style="font-size:.78rem;color:var(--text2)">${banque?banque.nom:'—'}</td>
+      <td><button class="btn btn-ghost btn-xs" onclick="editCompte('${c.id}')">✏️</button>
+      <button class="btn btn-red btn-xs" onclick="delCompte('${c.id}')">✕</button></td>
+    </tr>`;
+  }).join('')||'<tr><td colspan="7" style="text-align:center;color:var(--text3)">Aucun compte MM configuré</td></tr>';
+}
+window.renderAdminMMTetes=renderAdminMMTetes;
+
+function renderAdminMMPDV(){
+  document.getElementById('mmPDVTbody').innerHTML=pdvs.map(p=>`<tr>
+    <td><b>${p.nom}</b><br><span class="badge ${p.type==='principale'?'bg':'bb'}" style="font-size:.6rem">${p.type}</span></td>
+    <td style="font-family:monospace;font-size:.78rem">${p.numOM||'—'}</td>
+    <td style="font-family:monospace;font-size:.78rem">${p.numMTN||'—'}</td>
+    <td style="font-family:monospace;font-size:.78rem">${p.numWave||'—'}</td>
+    <td style="font-family:monospace;font-size:.78rem">${p.numMoov||'—'}</td>
+    <td><button class="btn btn-ghost btn-xs" onclick="editPDV('${p.id}')">✏️</button></td>
+  </tr>`).join('');
+}
+window.renderAdminMMPDV=renderAdminMMPDV;
+
+function imprimerConfig(section){
+  const titres={pdv:'Points de Vente',banques:'Banques & Caisses',mmtetes:'Mobile Money — Têtes de Pont','mm-pdv':'Mobile Money — Numéros PDV'};
+  let html='';
+  if(section==='pdv'){
+    html=`<h2>Points de Vente</h2><table border="1" cellpadding="6" style="width:100%;border-collapse:collapse;font-size:10pt">
+      <tr style="background:#f0f0f0"><th>Nom</th><th>Type</th><th>Responsable</th><th>Fréquence</th><th>N° OM</th><th>N° MTN</th><th>N° Wave</th><th>N° Moov</th></tr>
+      ${pdvs.map(p=>`<tr><td>${p.nom}</td><td>${p.type}</td><td>${p.resp||'—'}</td><td>${p.freq}</td><td>${p.numOM||'—'}</td><td>${p.numMTN||'—'}</td><td>${p.numWave||'—'}</td><td>${p.numMoov||'—'}</td></tr>`).join('')}
+    </table>`;
+  } else if(section==='banques'){
+    html=`<h2>Banques & Caisses</h2><table border="1" cellpadding="6" style="width:100%;border-collapse:collapse;font-size:10pt">
+      <tr style="background:#f0f0f0"><th>Nom</th><th>Opérateur</th><th>N° Compte / RIB</th><th>Notes</th><th>Solde actuel</th></tr>
+      ${comptes.filter(c=>c.cat==='banque'||c.cat==='caisse').map(c=>`<tr><td>${c.nom}</td><td>${c.op}</td><td>${c.num||'—'}</td><td>${c.notes||'—'}</td><td>${fmt(c.solde)} FCFA</td></tr>`).join('')}
+    </table>`;
+  } else if(section==='mm-tetes'){
+    html=`<h2>Mobile Money — Têtes de Pont</h2><table border="1" cellpadding="6" style="width:100%;border-collapse:collapse;font-size:10pt">
+      <tr style="background:#f0f0f0"><th>Nom</th><th>Opérateur</th><th>N° Wallet</th><th>Solde</th><th>Tête de pont</th><th>Banque rattachée</th></tr>
+      ${comptes.filter(c=>c.cat==='mobile_money').map(c=>{const b=c.banqueRattachee?comptes.find(x=>x.id===c.banqueRattachee):null;return`<tr><td>${c.nom}</td><td>${c.op}</td><td>${c.num||'—'}</td><td>${fmt(c.solde)} FCFA</td><td>${c.tetePont?'Oui':'Non'}</td><td>${b?b.nom:'—'}</td></tr>`;}).join('')}
+    </table>`;
+  } else if(section==='mm-pdv'){
+    html=`<h2>Mobile Money — Numéros par PDV</h2><table border="1" cellpadding="6" style="width:100%;border-collapse:collapse;font-size:10pt">
+      <tr style="background:#f0f0f0"><th>PDV</th><th>🟠 Orange Money</th><th>🟡 MTN MoMo</th><th>🔵 Wave</th><th>🟢 Moov Money</th></tr>
+      ${pdvs.map(p=>`<tr><td><b>${p.nom}</b><br><small>${p.type}</small></td><td>${p.numOM||'—'}</td><td>${p.numMTN||'—'}</td><td>${p.numWave||'—'}</td><td>${p.numMoov||'—'}</td></tr>`).join('')}
+    </table>`;
+  }
+  const w=window.open('','_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Configuration — ${PHARMACIE_NOM}</title>
+  <style>body{font-family:Arial,sans-serif;padding:20px;color:#111}h2{color:#00C47A;margin-bottom:12px}table{width:100%;border-collapse:collapse}th{background:#f0f0f0}th,td{border:1px solid #ccc;padding:6px 8px;font-size:10pt}.footer{margin-top:20px;font-size:8pt;color:#999;text-align:center}@media print{body{padding:10px}}</style>
+  </head><body>
+  <div style="text-align:right;font-size:9pt;color:#666">${PHARMACIE_NOM} — Imprimé le ${new Date().toLocaleString('fr-FR')}</div>
+  ${html}
+  <div class="footer">PharmaCash Pro — Document confidentiel</div>
+  <script>window.onload=()=>window.print()<\/script>
+  </body></html>`);
+  w.document.close();
+}
+window.imprimerConfig=imprimerConfig;
 
 // PDV CRUD
 function onPDVFreqChange(){
