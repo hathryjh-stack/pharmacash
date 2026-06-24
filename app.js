@@ -377,12 +377,13 @@ function renderDashboard(){
     <div class="stat-card amber"><div class="stat-lbl">⏳ En transit (MM)</div><div class="stat-val amber">${fmt(transit)}</div><div class="stat-sub">${DEVISE} — mobile money</div></div>`;
   document.getElementById('dbComptes').innerHTML=comptes.filter(c=>c.actif!==false).map(c=>{
     const col=c.color||'var(--green)',op=c.op==='AUTRE'&&c.opLibre?c.opLibre:c.op;
-    return`<div class="compte-card" style="border-left:3px solid ${col}">
+    return`<div class="compte-card" style="border-left:3px solid ${col};cursor:pointer" onclick="goTo('banques');setTimeout(()=>ouvrirMouvementsCompte('${c.id}'),100)" title="Voir mouvements de ${c.nom}">
       <div class="cc-icon">${OP_ICONS[c.op]||'💳'}</div>
-      <div class="cc-name">${c.nom}</div>
+      <div class="cc-name">${c.nom}${c.tetePont?` <span style="font-size:.6rem;background:var(--cyan-dim);color:var(--cyan);padding:1px 4px;border-radius:3px">TP</span>`:''}</div>
       <div class="cc-solde" style="color:${(c.solde||0)>=0?col:'var(--red)'};">${fmt(c.solde)} <span style="font-size:.7rem;font-weight:400;color:var(--text2)">${DEVISE}</span></div>
       <div style="margin-top:4px">${dispoBadge(c)}</div>
       <div class="cc-type">${c.cat==='mobile_money'?'Mobile Money':c.cat==='banque'?'Banque':'Caisse'} · ${op}</div>
+      <div style="font-size:.62rem;color:var(--cyan);margin-top:4px">📋 Voir mouvements</div>
     </div>`;
   }).join('');
   const rTb=document.getElementById('dbRecTbody');
@@ -1077,7 +1078,10 @@ async function saveTransfert(){
   if(srcId===dstId){toast('Source et destination identiques','err');return;}
   const src=comptes.find(x=>x.id===srcId),dst=comptes.find(x=>x.id===dstId);
   if(!src||!dst){toast('Compte introuvable','err');return;}
-  if((src.solde||0)<montant){if(!confirm(`Solde ${src.nom} insuffisant (${fmt(src.solde)} ${DEVISE}). Continuer quand même ?`))return;}
+  if((src.solde||0)<montant){
+    toast(`❌ Solde insuffisant — ${src.nom} : ${fmt(src.solde||0)} ${DEVISE} disponible, ${fmt(montant)} ${DEVISE} demandé`,'err');
+    return;
+  }
   // Débite MM
   src.solde=(src.solde||0)-montant;await saveItem('comptes',src);
   // Crédite Banque
