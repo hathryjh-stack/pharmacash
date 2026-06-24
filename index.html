@@ -185,9 +185,10 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <div class="pg" id="pg-petitecaisse">
         <div class="pg-header">
           <div><div class="pg-title">💰 Petite caisse</div><div class="pg-sub">Approvisionnements et dépenses en espèces</div></div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <div style="font-size:.85rem;color:var(--text2)">Solde : <b id="pcSolde" id="pcSoldeEl" style="color:var(--green)">0 FCFA</b></div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <div style="font-size:.85rem;color:var(--text2)">Solde théorique : <b id="pcSolde" style="color:var(--green)">0 FCFA</b></div>
             <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻</button>
+            <button class="btn btn-amber btn-sm" onclick="ouvrirCloturePetiteCaisse()">🔒 Clôturer</button>
             <button class="btn btn-blue btn-sm" onclick="openPCModal('appro')">+ Approvisionner</button>
             <button class="btn btn-red btn-sm" onclick="openPCModal('depense')">− Dépense</button>
           </div>
@@ -411,6 +412,41 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
 
 <!-- USER -->
 <div class="modal-ov" id="mUser"><div class="modal"><div class="modal-hdr"><div class="modal-title" id="mUserTitle">Nouvel utilisateur</div><button class="close-x" onclick="closeM('mUser')">✕</button></div><div class="modal-body"><input type="hidden" id="mUserId"><div class="fg2"><div class="fg"><label>Nom complet *</label><input type="text" id="mUNom"></div><div class="fg"><label>Login *</label><input type="text" id="mULogin"></div></div><div class="fg2"><div class="fg"><label>Mot de passe *</label><div style="position:relative"><input type="password" id="mUPass" style="padding-right:42px;width:100%"><button type="button" onclick="var i=document.getElementById('mUPass');i.type=i.type==='password'?'text':'password'" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8891b0;font-size:1.1rem;padding:0;line-height:1">👁</button></div></div><div class="fg"><label>Rôle *</label><select id="mURole"><option value="collaborateur">Collaborateur</option><option value="lecteur">Lecteur</option><option value="admin">Administrateur</option></select></div></div><div class="fg2"><div class="fg"><label>PDV assigné</label><select id="mUPDV"><option value="">Tous</option></select></div><div class="fg"><label>Téléphone</label><input type="text" id="mUTel"></div></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mUser')">Annuler</button><button class="btn btn-green" onclick="saveUser()">Enregistrer</button></div></div></div>
+
+<!-- CLOTURE PETITE CAISSE -->
+<div class="modal-ov" id="mCloturePetiteCaisse"><div class="modal" style="max-width:500px"><div class="modal-hdr"><div class="modal-title">🔒 Clôture Petite Caisse</div><button class="close-x" onclick="closeM('mCloturePetiteCaisse')">✕</button></div><div class="modal-body">
+  <div class="fg2">
+    <div class="fg"><label>Date de clôture *</label><input type="date" id="pcClotDate"></div>
+    <div class="fg"><label>Période couverte</label><input type="text" id="pcClotPeriode" placeholder="ex: Juin 2026 ou S1 2026…"></div>
+  </div>
+  <div style="background:var(--surface2);border-radius:8px;padding:12px;margin:10px 0">
+    <div style="font-size:.75rem;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:8px">Récapitulatif théorique</div>
+    <div class="fg2">
+      <div><div style="font-size:.7rem;color:var(--text3)">Total appros</div><div id="pcClotTotAppro" style="font-size:1rem;font-weight:800;color:var(--green)">0 FCFA</div></div>
+      <div><div style="font-size:.7rem;color:var(--text3)">Total dépenses</div><div id="pcClotTotDepense" style="font-size:1rem;font-weight:800;color:var(--red)">0 FCFA</div></div>
+    </div>
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+      <div style="font-size:.7rem;color:var(--text3)">Solde théorique</div>
+      <div id="pcClotSoldeTheo" style="font-size:1.2rem;font-weight:800;color:var(--cyan)">0 FCFA</div>
+    </div>
+  </div>
+  <div class="fg"><label>Solde physique constaté (FCFA) *</label><input type="number" id="pcClotSoldePhysique" min="0" placeholder="Montant compté en caisse" oninput="calcEcartPC()"></div>
+  <div style="background:var(--surface2);border-radius:8px;padding:10px;margin:8px 0">
+    <div style="font-size:.7rem;color:var(--text3)">Écart (physique − théorique)</div>
+    <div id="pcClotEcart" style="font-size:1.1rem;font-weight:800">—</div>
+    <div id="pcClotEcartMsg" style="font-size:.78rem;color:var(--text2);margin-top:4px"></div>
+  </div>
+  <div class="fg"><label>Observations</label><textarea id="pcClotNotes" rows="2" placeholder="Motif d'écart, remarques…"></textarea></div>
+  <div class="fg2">
+    <div class="fg"><label>Responsable caisse</label><input type="text" id="pcClotResponsable" placeholder="Nom du responsable…"></div>
+    <div class="fg"><label>Comptable</label><input type="text" id="pcClotComptable" placeholder="Nom du comptable…"></div>
+  </div>
+  <div class="fg"><label>Saisi par</label><input type="text" id="pcClotSaisi" readonly></div>
+</div><div class="modal-ftr">
+  <button class="btn btn-ghost" onclick="closeM('mCloturePetiteCaisse')">Annuler</button>
+  <button class="btn btn-blue" onclick="imprimerCloturePetiteCaisse()">🖨️ Imprimer</button>
+  <button class="btn btn-green" onclick="saveCloturePetiteCaisse()">✅ Valider clôture</button>
+</div></div></div>
 
 <!-- PETITE CAISSE MODAL -->
 <div class="modal-ov" id="mPetiteCaisse"><div class="modal"><div class="modal-hdr"><div class="modal-title" id="pcMTitle">Petite caisse</div><button class="close-x" onclick="closeM('mPetiteCaisse')">✕</button></div><div class="modal-body">
