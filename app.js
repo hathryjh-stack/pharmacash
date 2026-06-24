@@ -252,7 +252,7 @@ function weekBounds(d){
 }
 const MM_LABEL={OM:'🟠 Orange Money',MTN:'🟡 MTN MoMo',WAVE:'🔵 Wave',MOOV:'🟢 Moov Money',CASH:'💵 Cash',CHEQUE:'📝 Chèque',VIREMENT:'🏦 Virement'};
 const OP_ICONS={OM:'🟠',MTN:'🟡',WAVE:'🔵',MOOV:'🟢',BICICI:'🏦',SGBCI:'🏦',ECOBANK:'🏦',UBA:'🏦',BNI:'🏦',NSIA:'🏦',SIB:'🏦',CORIS:'🏦',BOA:'🏦',CASH:'💵',AUTRE:'💳'};
-const FREQ_LABEL={quotidien:'Quotidien',hebdomadaire:'Hebdo',bimensuel:'2×/sem',mensuel:'Mensuel'};
+const FREQ_LABEL={quotidien:'Quotidien',bihebdomadaire:'2×/semaine',hebdomadaire:'Hebdo',bimensuel:'Bimensuel',mensuel:'Mensuel'};
 const JOURS_NOM=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
 const mmBadge=v=>`<span style="font-weight:600">${MM_LABEL[v]||v}</span>`;
 const statutBadge=s=>{const m={'confirmé':'bg','reçu':'bc','en attente':'ba'};return`<span class="badge ${m[s]||'ba'}">${s}</span>`;};
@@ -1436,7 +1436,8 @@ window.imprimerConfig=imprimerConfig;
 // PDV CRUD
 function onPDVFreqChange(){
   const v=document.getElementById('mPDVFreq').value;
-  document.getElementById('pdvJoursWrap').style.display=(v==='hebdomadaire'||v==='bimensuel')?'block':'none';
+  const showJours=['hebdomadaire','bimensuel','bihebdomadaire'].includes(v);
+  document.getElementById('pdvJoursWrap').style.display=showJours?'block':'none';
   document.getElementById('pdvJourMoisWrap').style.display=v==='mensuel'?'block':'none';
 }
 window.onPDVFreqChange=onPDVFreqChange;
@@ -1444,6 +1445,8 @@ function openPDVModal(id){
   document.getElementById('mPDVTitle').textContent=id?'Modifier PDV':'Nouveau PDV';
   document.getElementById('mPDVId').value=id||'';
   document.getElementById('mPDVCompte').innerHTML='<option value="">— Aucun —</option>'+comptes.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  document.getElementById('mPDVBanque').innerHTML='<option value="">— Aucune —</option>'+comptes.filter(c=>c.cat==='banque'&&c.actif!==false).map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  document.getElementById('mPDVCaisse').innerHTML='<option value="">— Aucune —</option>'+comptes.filter(c=>c.cat==='caisse'&&c.actif!==false).map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
   const p=id?pdvs.find(x=>x.id===id):{};
   document.getElementById('mPDVNom').value=p.nom||'';
   document.getElementById('mPDVType').value=p.type||'principale';
@@ -1453,9 +1456,10 @@ function openPDVModal(id){
   document.getElementById('mPDVHeure').value=p.heure||'';
   document.getElementById('mPDVTel').value=p.tel||'';
   document.getElementById('mPDVCompte').value=p.compteDefaut||'';
+  document.getElementById('mPDVBanque').value=p.banqueDirecte||'';
+  document.getElementById('mPDVCaisse').value=p.caisseDirecte||'';
   document.getElementById('mPDVJourMois').value=p.jourMois||'';
   document.getElementById('mPDVNotes').value=p.notes||'';
-  // Numéros MM locaux
   document.getElementById('mPDVNumOM').value=p.numOM||'';
   document.getElementById('mPDVNumMTN').value=p.numMTN||'';
   document.getElementById('mPDVNumWave').value=p.numWave||'';
@@ -1482,7 +1486,9 @@ async function savePDV(){
     numOM:document.getElementById('mPDVNumOM').value.trim(),
     numMTN:document.getElementById('mPDVNumMTN').value.trim(),
     numWave:document.getElementById('mPDVNumWave').value.trim(),
-    numMoov:document.getElementById('mPDVNumMoov').value.trim()};
+    numMoov:document.getElementById('mPDVNumMoov').value.trim(),
+    banqueDirecte:document.getElementById('mPDVBanque').value,
+    caisseDirecte:document.getElementById('mPDVCaisse').value};
   if(id){Object.assign(pdvs.find(p=>p.id===id),data);await saveItem('pdvs',pdvs.find(p=>p.id===id));}
   else{data.id=uid();pdvs.push(data);await saveItem('pdvs',data);}
   populateSelects();closeM('mPDV');renderAdmin();toast('PDV enregistré ✓');
