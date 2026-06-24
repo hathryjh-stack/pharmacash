@@ -963,6 +963,8 @@ function ouvrirTransfertRapide(compteMMId){
   toast(`⚡ Transfert rapide : ${cMM.nom} → ${cBQ.nom} — Montant modifiable`);
 }
 window.ouvrirTransfertRapide=ouvrirTransfertRapide;
+
+function ouvrirMouvementsCompte(compteId){
   // Filtre les mouvements sur ce compte et fait défiler vers le journal
   const fmc=document.getElementById('fMCompte');
   if(fmc)fmc.value=compteId;
@@ -1420,6 +1422,7 @@ function onTetePontChange(){
   }
 }
 window.onTetePontChange=onTetePontChange;
+function onCptOpChange(){
   const op=document.getElementById('mCptOp').value;
   document.getElementById('mCptOpLibre').style.display=op==='AUTRE'?'block':'none';
   const cm={OM:'#ff6b00',MTN:'#f5a623',WAVE:'#22d3ee',MOOV:'#00d68f',CASH:'#00d68f',
