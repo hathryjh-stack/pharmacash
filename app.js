@@ -923,19 +923,33 @@ window.renderCaisse=renderCaisse;
 function renderBanques(){
   document.getElementById('bqComptes').innerHTML=comptes.filter(c=>c.actif!==false).map(c=>{
     const col=c.color||'var(--green)',op=c.op==='AUTRE'&&c.opLibre?c.opLibre:c.op;
-    return`<div class="compte-card" style="border-left:3px solid ${col}">
+    return`<div class="compte-card" style="border-left:3px solid ${col};cursor:pointer" onclick="ouvrirMouvementsCompte('${c.id}')" title="Voir les mouvements de ${c.nom}">
       <div class="cc-icon">${OP_ICONS[c.op]||'💳'}</div>
       <div class="cc-name">${c.nom}</div>
       <div class="cc-solde" style="color:${(c.solde||0)>=0?col:'var(--red)'};">${fmt(c.solde)}</div>
       <div style="margin-top:4px">${dispoBadge(c)}</div>
       <div class="cc-type">${c.cat==='mobile_money'?'Mobile Money':c.cat==='banque'?'Banque':'Caisse'} · ${op}</div>
       ${c.num?`<div style="font-size:.68rem;color:var(--text3);margin-top:2px;font-family:monospace">${c.num}</div>`:''}
+      <div style="font-size:.65rem;color:var(--cyan);margin-top:6px">📋 Voir mouvements</div>
     </div>`;
   }).join('');
   document.getElementById('fMCompte').innerHTML='<option value="">Tous comptes</option>'+comptes.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
   renderMvts();
 }
 window.renderBanques=renderBanques;
+
+function ouvrirMouvementsCompte(compteId){
+  // Filtre les mouvements sur ce compte et fait défiler vers le journal
+  const fmc=document.getElementById('fMCompte');
+  if(fmc)fmc.value=compteId;
+  renderMvts();
+  // Scroll vers le journal des mouvements
+  const mvtSection=document.getElementById('mvtTbody');
+  if(mvtSection)mvtSection.closest('.card')?.scrollIntoView({behavior:'smooth',block:'start'});
+  // Met en surbrillance le filtre actif
+  toast(`Mouvements filtrés — ${comptes.find(c=>c.id===compteId)?.nom||compteId}`);
+}
+window.ouvrirMouvementsCompte=ouvrirMouvementsCompte;
 function renderMvts(){
   // Fusion mouvements + transferts
   const allMvts=[
@@ -1499,14 +1513,16 @@ function openPCModal(type){
   document.getElementById('pcBenefTel').value='';
   document.getElementById('pcBenefType').value='Particulier';
   document.getElementById('pcModePaiement').value='Espèces';
-  const caisseSource=document.getElementById('pcCaisseSource');
+  // Appro : affiche seulement le compte à débiter, cache tout le reste
+  document.getElementById('pcCaisseSource').style.display=type==='appro'?'block':'none';
+  document.getElementById('pcBenefSection').style.display=type==='appro'?'none':'block';
+  document.getElementById('pcModePaiementRow').style.display=type==='appro'?'none':'flex';
+  document.getElementById('pcResponsableRow').style.display=type==='appro'?'none':'flex';
+  document.getElementById('pcCategorieRow').style.display=type==='appro'?'none':'flex';
   const caisseId=document.getElementById('pcCaisseId');
-  if(type==='appro'){
-    caisseSource.style.display='block';
-    if(caisseId)caisseId.innerHTML=comptes.filter(c=>c.actif!==false)
-      .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
-  } else {
-    caisseSource.style.display='none';
+  if(type==='appro'&&caisseId){
+    caisseId.innerHTML=comptes.filter(c=>c.actif!==false)
+      .map(c=>`<option value="${c.id}">${c.nom} — ${fmt(c.solde||0)} ${DEVISE}</option>`).join('');
   }
   openM('mPetiteCaisse');
 }
@@ -1711,14 +1727,16 @@ function genererReleve(){
 
   } else if(type==='compte'){
     // ── RELEVÉ PAR ÉTABLISSEMENT FINANCIER ──
+    // Uniquement les mouvements financiers du compte — pas les versements PDV
     const cpt=comptes.find(c=>c.id===cptF);
-    const mvtF=[
-      ...mvts.filter(m=>m.date>=debut&&m.date<=fin&&(!cptF||m.compte===cptF)),
-      ...transferts.filter(t=>t.date>=debut&&t.date<=fin&&(!cptF||t.compteSrc===cptF||t.compteDst===cptF))
-    ].sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
-    const verF=versements.filter(v=>v.date>=debut&&v.date<=fin&&v.statut==='confirmé'&&(!cptF||v.compte===cptF));
-    window._releveData={type,debut,fin,cptF,cpt,mvtF,verF};
-    preview.innerHTML=_buildRelEtablissement(debut,fin,cpt,mvtF,verF);
+    const mvtF=mvts.filter(m=>m.date>=debut&&m.date<=fin&&(!cptF||m.compte===cptF))
+      .sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
+    const trfF=transferts.filter(t=>t.date>=debut&&t.date<=fin&&(!cptF||t.compteSrc===cptF||t.compteDst===cptF))
+      .sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
+    // Versements confirmés reçus sur ce compte (depuis les PDV)
+    const verRecus=versements.filter(v=>v.date>=debut&&v.date<=fin&&v.statut==='confirmé'&&(!cptF||v.compte===cptF));
+    window._releveData={type,debut,fin,cptF,cpt,mvtF,trfF,verRecus};
+    preview.innerHTML=_buildRelEtablissement(debut,fin,cpt,mvtF,trfF,verRecus);
 
   } else {
     // ── RELEVÉ TRANSFERTS MM→BANQUE ──
@@ -1771,42 +1789,70 @@ function _buildRelevePDV(debut,fin,pdvF,recF,verF,totRec,totVer,totConf){
   </div>`;
 }
 
-function _buildRelEtablissement(debut,fin,cpt,mvtF,verF){
+function _buildRelEtablissement(debut,fin,cpt,mvtF,trfF,verRecus){
   const nom=cpt?cpt.nom:'Tous les comptes';
-  // Calcul solde progressif
-  let soldeInit=cpt?.solde||0;
-  // Recalcule solde début de période
-  const tousMvts=[...mvtF].sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
+  const totEntrees=mvtF.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0)
+    +trfF.filter(t=>t.compteDst===cpt?.id).reduce((s,t)=>s+(t.montant||0),0);
+  const totSorties=mvtF.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0)
+    +trfF.filter(t=>t.compteSrc===cpt?.id).reduce((s,t)=>s+(t.montant||0),0);
+  const totVerRecus=verRecus.reduce((s,v)=>s+(v.montant||0),0);
   return`<div id="relevePrintZone" style="font-family:Arial,sans-serif;color:#111">
     ${_headerReleve('Relevé Établissement Financier',debut,fin,nom)}
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px">
-      ${[['Entrées',tousMvts.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0),'#00C47A'],
-         ['Sorties',tousMvts.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0),'#f05050'],
-         ['Solde actuel',cpt?.solde||0,'#4d8af0']]
-        .map(([l,v,c])=>`<div style="border:1px solid #eee;border-radius:8px;padding:12px;border-left:3px solid ${c}"><div style="font-size:.7rem;color:#999;text-transform:uppercase">${l}</div><div style="font-size:1.1rem;font-weight:800;color:${c}">${fmt(v)} ${DEVISE}</div></div>`).join('')}
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+      ${[['Entrées',totEntrees,'#00C47A'],['Sorties',totSorties,'#f05050'],
+         ['Versements PDV reçus',totVerRecus,'#4d8af0'],['Solde actuel',cpt?.solde||0,'#a855f7']]
+        .map(([l,v,c])=>`<div style="border:1px solid #eee;border-radius:8px;padding:10px;border-left:3px solid ${c}">
+          <div style="font-size:.65rem;color:#999;text-transform:uppercase">${l}</div>
+          <div style="font-size:1rem;font-weight:800;color:${c}">${fmt(v)} ${DEVISE}</div>
+        </div>`).join('')}
     </div>
-    ${verF.length?`<div style="margin-bottom:12px">
-      <div style="font-weight:700;margin-bottom:8px;font-size:.85rem;text-transform:uppercase;color:#555">Versements reçus (${verF.length})</div>
-      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
-        <thead><tr>${['Date','PDV','Type','Montant','Référence'].map(h=>`<th style="background:#f5f5f5;padding:7px 10px;text-align:left;border:1px solid #eee">${h}</th>`).join('')}</tr></thead>
-        <tbody>${verF.map((v,i)=>`<tr style="background:${i%2?'#fafafa':'#fff'}">${[fmtD(v.date),pdvs.find(p=>p.id===v.pdv)?.nom||v.pdv,MM_LABEL[v.type]||v.type,fmt(v.montant)+' '+DEVISE,v.ref||'—'].map(x=>`<td style="padding:6px 10px;border:1px solid #eee">${x}</td>`).join('')}</tr>`).join('')}</tbody>
+
+    ${verRecus.length?`<div style="margin-bottom:16px">
+      <div style="font-weight:700;margin-bottom:8px;font-size:.82rem;text-transform:uppercase;color:#4d8af0;border-bottom:1px solid #eee;padding-bottom:4px">
+        ↓ Versements reçus depuis les dépôts PDV (${verRecus.length})
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <thead><tr>${['Date','PDV','Type','Référence','Montant'].map(h=>`<th style="background:#f0f4ff;padding:6px 8px;text-align:left;border:1px solid #e0e8ff">${h}</th>`).join('')}</tr></thead>
+        <tbody>${verRecus.map((v,i)=>`<tr style="background:${i%2?'#fafafa':'#fff'}">
+          <td style="padding:5px 8px;border:1px solid #eee">${fmtD(v.date)}</td>
+          <td style="padding:5px 8px;border:1px solid #eee">${pdvs.find(p=>p.id===v.pdv)?.nom||v.pdv}</td>
+          <td style="padding:5px 8px;border:1px solid #eee">${MM_LABEL[v.type]||v.type}</td>
+          <td style="padding:5px 8px;border:1px solid #eee">${v.ref||'—'}</td>
+          <td style="padding:5px 8px;border:1px solid #eee;color:#4d8af0;font-weight:600">+${fmt(v.montant)} ${DEVISE}</td>
+        </tr>`).join('')}
+        <tr style="background:#e8f0ff;font-weight:700">
+          <td colspan="4" style="padding:5px 8px;border:1px solid #ccc">TOTAL versements PDV</td>
+          <td style="padding:5px 8px;border:1px solid #ccc;color:#4d8af0">+${fmt(totVerRecus)} ${DEVISE}</td>
+        </tr></tbody>
       </table></div>`:''}
-    ${tousMvts.length?`<div style="margin-bottom:20px">
-      <div style="font-weight:700;margin-bottom:8px;font-size:.85rem;text-transform:uppercase;color:#555">Journal des mouvements (${tousMvts.length})</div>
-      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
-        <thead><tr>${['Date','Type','Libellé','Référence','Montant','Solde après'].map(h=>`<th style="background:#f5f5f5;padding:7px 10px;text-align:left;border:1px solid #eee">${h}</th>`).join('')}</tr></thead>
-        <tbody>${tousMvts.map((m,i)=>`<tr style="background:${i%2?'#fafafa':'#fff'}">
-          <td style="padding:6px 10px;border:1px solid #eee">${fmtD(m.date)}</td>
-          <td style="padding:6px 10px;border:1px solid #eee"><span style="color:${m.type==='entrée'?'#00C47A':'#f05050'};font-weight:700">${m.type==='entrée'?'↑ Entrée':'↓ Sortie'}</span></td>
-          <td style="padding:6px 10px;border:1px solid #eee">${m.libelle||'—'}</td>
-          <td style="padding:6px 10px;border:1px solid #eee">${m.ref||'—'}</td>
-          <td style="padding:6px 10px;border:1px solid #eee;color:${m.type==='entrée'?'#00C47A':'#f05050'};font-weight:700">${m.type==='entrée'?'+':'-'}${fmt(m.montant)} ${DEVISE}</td>
-          <td style="padding:6px 10px;border:1px solid #eee;font-weight:700">${fmt(m.soldeApres||0)} ${DEVISE}</td>
-        </tr>`).join('')}</tbody>
+
+    ${mvtF.length||trfF.length?`<div style="margin-bottom:16px">
+      <div style="font-weight:700;margin-bottom:8px;font-size:.82rem;text-transform:uppercase;color:#555;border-bottom:1px solid #eee;padding-bottom:4px">
+        Journal des mouvements financiers (${mvtF.length+trfF.length})
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:.78rem">
+        <thead><tr>${['Date','Type','Libellé','Référence','Montant','Solde après'].map(h=>`<th style="background:#f5f5f5;padding:6px 8px;text-align:left;border:1px solid #eee">${h}</th>`).join('')}</tr></thead>
+        <tbody>
+          ${[...mvtF.map(m=>({...m,_cat:'mvt'})),...trfF.map(t=>({...t,_cat:'trf'}))]
+            .sort((a,b)=>a.date?.localeCompare(b.date||'')||0)
+            .map((m,i)=>{
+              const isEntree=m.type==='entrée'||(m._cat==='trf'&&m.compteDst===cpt?.id);
+              const libelle=m._cat==='trf'?`🔄 Transfert ${isEntree?'reçu de':'vers'} ${comptes.find(c=>c.id===(isEntree?m.compteSrc:m.compteDst))?.nom||'—'}`:m.libelle||'—';
+              return`<tr style="background:${i%2?'#fafafa':'#fff'}">
+                <td style="padding:5px 8px;border:1px solid #eee">${fmtD(m.date)}</td>
+                <td style="padding:5px 8px;border:1px solid #eee"><span style="color:${isEntree?'#00C47A':'#f05050'};font-weight:700">${isEntree?'↑ Entrée':'↓ Sortie'}</span></td>
+                <td style="padding:5px 8px;border:1px solid #eee">${libelle}</td>
+                <td style="padding:5px 8px;border:1px solid #eee">${m.ref||'—'}</td>
+                <td style="padding:5px 8px;border:1px solid #eee;color:${isEntree?'#00C47A':'#f05050'};font-weight:600">${isEntree?'+':'-'}${fmt(m.montant)} ${DEVISE}</td>
+                <td style="padding:5px 8px;border:1px solid #eee;font-weight:600">${fmt(m.soldeApres||0)} ${DEVISE}</td>
+              </tr>`;
+            }).join('')}
+        </tbody>
       </table></div>`:'<div style="color:#999;text-align:center;padding:20px">Aucun mouvement sur cette période</div>'}
+
     <div style="margin-top:20px;display:grid;grid-template-columns:1fr 1fr;gap:20px">
-      <div style="border-top:1px solid #ccc;padding-top:8px;font-size:.82rem;color:#999">Signature Responsable</div>
-      <div style="border-top:1px solid #ccc;padding-top:8px;font-size:.82rem;color:#999">Cachet & Signature Comptable</div>
+      <div style="border-top:1px solid #ccc;padding-top:8px;font-size:.8rem;color:#999">Signature Responsable</div>
+      <div style="border-top:1px solid #ccc;padding-top:8px;font-size:.8rem;color:#999">Cachet & Signature Comptable</div>
     </div>
   </div>`;
 }
