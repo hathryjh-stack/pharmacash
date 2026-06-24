@@ -923,13 +923,21 @@ window.renderCaisse=renderCaisse;
 function renderBanques(){
   document.getElementById('bqComptes').innerHTML=comptes.filter(c=>c.actif!==false).map(c=>{
     const col=c.color||'var(--green)',op=c.op==='AUTRE'&&c.opLibre?c.opLibre:c.op;
-    return`<div class="compte-card" style="border-left:3px solid ${col};cursor:pointer" onclick="ouvrirMouvementsCompte('${c.id}')" title="Voir les mouvements de ${c.nom}">
+    const banqueRatt=c.tetePont&&c.banqueRattachee?comptes.find(b=>b.id===c.banqueRattachee):null;
+    return`<div class="compte-card" style="border-left:3px solid ${col};cursor:pointer" onclick="ouvrirMouvementsCompte('${c.id}')" title="Voir les mouvements">
       <div class="cc-icon">${OP_ICONS[c.op]||'💳'}</div>
-      <div class="cc-name">${c.nom}</div>
+      <div class="cc-name">${c.nom}${c.tetePont?` <span style="font-size:.6rem;background:var(--cyan-dim);color:var(--cyan);padding:1px 5px;border-radius:4px">TÊTE DE PONT</span>`:''}</div>
       <div class="cc-solde" style="color:${(c.solde||0)>=0?col:'var(--red)'};">${fmt(c.solde)}</div>
       <div style="margin-top:4px">${dispoBadge(c)}</div>
       <div class="cc-type">${c.cat==='mobile_money'?'Mobile Money':c.cat==='banque'?'Banque':'Caisse'} · ${op}</div>
       ${c.num?`<div style="font-size:.68rem;color:var(--text3);margin-top:2px;font-family:monospace">${c.num}</div>`:''}
+      ${c.tetePont&&banqueRatt?`
+        <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px">
+          <div style="font-size:.65rem;color:var(--text3);margin-bottom:4px">→ ${banqueRatt.nom}</div>
+          <button class="btn btn-green btn-xs" onclick="event.stopPropagation();ouvrirTransfertRapide('${c.id}')" style="width:100%">
+            ⚡ Transférer vers ${banqueRatt.nom}
+          </button>
+        </div>`:''}
       <div style="font-size:.65rem;color:var(--cyan);margin-top:6px">📋 Voir mouvements</div>
     </div>`;
   }).join('');
@@ -938,7 +946,23 @@ function renderBanques(){
 }
 window.renderBanques=renderBanques;
 
-function ouvrirMouvementsCompte(compteId){
+function ouvrirTransfertRapide(compteMMId){
+  const cMM=comptes.find(c=>c.id===compteMMId);
+  if(!cMM||!cMM.banqueRattachee){toast('Aucune banque rattachée à ce compte','err');return;}
+  const cBQ=comptes.find(c=>c.id===cMM.banqueRattachee);
+  if(!cBQ){toast('Banque rattachée introuvable','err');return;}
+  // Pré-remplit le modal transfert existant
+  document.getElementById('tDate').value=today();
+  document.getElementById('tSrcCompte').value=compteMMId;
+  document.getElementById('tDstCompte').value=cMM.banqueRattachee;
+  document.getElementById('tMontant').value=Math.max(0,cMM.solde||0);
+  document.getElementById('tRef').value='';
+  document.getElementById('tNotes').value=`Transfert tête de pont ${cMM.nom} → ${cBQ.nom}`;
+  document.getElementById('tSaisie').value=currentUser.nom;
+  openM('mTransfert');
+  toast(`⚡ Transfert rapide : ${cMM.nom} → ${cBQ.nom} — Montant modifiable`);
+}
+window.ouvrirTransfertRapide=ouvrirTransfertRapide;
   // Filtre les mouvements sur ce compte et fait défiler vers le journal
   const fmc=document.getElementById('fMCompte');
   if(fmc)fmc.value=compteId;
@@ -1165,14 +1189,22 @@ function genererRecuCaisse(data){
 window.genererRecuCaisse=genererRecuCaisse;
 
 function imprimerRecuCaisse(){
-  const w=window.open('','_blank','width=600,height=800');
+  const w=window.open('','_blank','width=800,height=900');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reçu</title>
   <style>
-    @page{size:A5;margin:0}
+    @page{size:A4 portrait;margin:5mm}
     body{margin:0;padding:0;background:#fff}
+    .recu-wrapper{display:flex;flex-direction:column;height:297mm;gap:0}
+    .recu-copy{height:148mm;overflow:hidden;padding:5mm;box-sizing:border-box;border-bottom:1px dashed #aaa}
+    .recu-copy:last-child{border-bottom:none}
+    .cut-line{text-align:center;font-size:8pt;color:#999;letter-spacing:3px;margin:0;line-height:0}
     @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
   </style></head><body>
-  ${window._recuHTML}
+  <div class="recu-wrapper">
+    <div class="recu-copy">${window._recuHTML.replace(/min-height:210mm/,'min-height:auto')}</div>
+    <div style="text-align:center;font-size:7pt;color:#bbb;padding:1mm 0">✂ ─────────────────────────────────────── COUPER ICI ───────────────────────────────────────── ✂</div>
+    <div class="recu-copy">${window._recuHTML.replace(/min-height:210mm/,'min-height:auto')}</div>
+  </div>
   <script>window.onload=()=>{window.print();setTimeout(()=>window.close(),1000)}<\/script>
   </body></html>`);
   w.document.close();
@@ -1180,21 +1212,22 @@ function imprimerRecuCaisse(){
 window.imprimerRecuCaisse=imprimerRecuCaisse;
 
 async function telechargerRecuPDF(){
-  // Utilise l'API d'impression du navigateur pour générer un PDF
-  const w=window.open('','_blank','width=600,height=800');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reçu — ${window._recuNum}</title>
+  const w=window.open('','_blank','width=800,height=900');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recu_${window._recuNum}</title>
   <style>
-    @page{size:A5;margin:0}
+    @page{size:A4 portrait;margin:5mm}
     body{margin:0;padding:0;background:#fff}
+    .recu-wrapper{display:flex;flex-direction:column;height:297mm;gap:0}
+    .recu-copy{height:148mm;overflow:hidden;padding:5mm;box-sizing:border-box;border-bottom:1px dashed #aaa}
+    .recu-copy:last-child{border-bottom:none}
     @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
   </style></head><body>
-  ${window._recuHTML}
-  <script>
-    window.onload=()=>{
-      window.document.title='Recu_${window._recuNum}';
-      window.print();
-    }
-  <\/script>
+  <div class="recu-wrapper">
+    <div class="recu-copy">${window._recuHTML.replace(/min-height:210mm/,'min-height:auto')}</div>
+    <div style="text-align:center;font-size:7pt;color:#bbb;padding:1mm 0">✂ ─────────────────────────────────────── COUPER ICI ───────────────────────────────────────── ✂</div>
+    <div class="recu-copy">${window._recuHTML.replace(/min-height:210mm/,'min-height:auto')}</div>
+  </div>
+  <script>window.onload=()=>window.print()<\/script>
   </body></html>`);
   w.document.close();
   toast('Dans la fenêtre d\'impression → choisir "Enregistrer en PDF"');
@@ -1326,11 +1359,21 @@ function openPDVModal(id){
   document.getElementById('mPDVId').value=id||'';
   document.getElementById('mPDVCompte').innerHTML='<option value="">— Aucun —</option>'+comptes.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
   const p=id?pdvs.find(x=>x.id===id):{};
-  document.getElementById('mPDVNom').value=p.nom||'';document.getElementById('mPDVType').value=p.type||'principale';
-  document.getElementById('mPDVAddr').value=p.addr||'';document.getElementById('mPDVResp').value=p.resp||'';
-  document.getElementById('mPDVFreq').value=p.freq||'quotidien';document.getElementById('mPDVHeure').value=p.heure||'';
-  document.getElementById('mPDVTel').value=p.tel||'';document.getElementById('mPDVCompte').value=p.compteDefaut||'';
-  document.getElementById('mPDVJourMois').value=p.jourMois||'';document.getElementById('mPDVNotes').value=p.notes||'';
+  document.getElementById('mPDVNom').value=p.nom||'';
+  document.getElementById('mPDVType').value=p.type||'principale';
+  document.getElementById('mPDVAddr').value=p.addr||'';
+  document.getElementById('mPDVResp').value=p.resp||'';
+  document.getElementById('mPDVFreq').value=p.freq||'quotidien';
+  document.getElementById('mPDVHeure').value=p.heure||'';
+  document.getElementById('mPDVTel').value=p.tel||'';
+  document.getElementById('mPDVCompte').value=p.compteDefaut||'';
+  document.getElementById('mPDVJourMois').value=p.jourMois||'';
+  document.getElementById('mPDVNotes').value=p.notes||'';
+  // Numéros MM locaux
+  document.getElementById('mPDVNumOM').value=p.numOM||'';
+  document.getElementById('mPDVNumMTN').value=p.numMTN||'';
+  document.getElementById('mPDVNumWave').value=p.numWave||'';
+  document.getElementById('mPDVNumMoov').value=p.numMoov||'';
   document.querySelectorAll('.pdv-jour').forEach(cb=>{cb.checked=p.jours?p.jours.includes(parseInt(cb.value)):false;});
   onPDVFreqChange();openM('mPDV');
 }
@@ -1341,11 +1384,19 @@ async function savePDV(){
   const nom=document.getElementById('mPDVNom').value.trim();if(!nom){toast('Nom obligatoire','err');return;}
   const id=document.getElementById('mPDVId').value;
   const jours=[...document.querySelectorAll('.pdv-jour:checked')].map(cb=>parseInt(cb.value));
-  const data={nom,type:document.getElementById('mPDVType').value,addr:document.getElementById('mPDVAddr').value,
-    resp:document.getElementById('mPDVResp').value,freq:document.getElementById('mPDVFreq').value,
-    heure:document.getElementById('mPDVHeure').value,tel:document.getElementById('mPDVTel').value,
-    compteDefaut:document.getElementById('mPDVCompte').value,jourMois:document.getElementById('mPDVJourMois').value,
-    jours,notes:document.getElementById('mPDVNotes').value};
+  const data={nom,type:document.getElementById('mPDVType').value,
+    addr:document.getElementById('mPDVAddr').value,
+    resp:document.getElementById('mPDVResp').value,
+    freq:document.getElementById('mPDVFreq').value,
+    heure:document.getElementById('mPDVHeure').value,
+    tel:document.getElementById('mPDVTel').value,
+    compteDefaut:document.getElementById('mPDVCompte').value,
+    jourMois:document.getElementById('mPDVJourMois').value,
+    jours,notes:document.getElementById('mPDVNotes').value,
+    numOM:document.getElementById('mPDVNumOM').value.trim(),
+    numMTN:document.getElementById('mPDVNumMTN').value.trim(),
+    numWave:document.getElementById('mPDVNumWave').value.trim(),
+    numMoov:document.getElementById('mPDVNumMoov').value.trim()};
   if(id){Object.assign(pdvs.find(p=>p.id===id),data);await saveItem('pdvs',pdvs.find(p=>p.id===id));}
   else{data.id=uid();pdvs.push(data);await saveItem('pdvs',data);}
   populateSelects();closeM('mPDV');renderAdmin();toast('PDV enregistré ✓');
@@ -1358,7 +1409,17 @@ async function delPDV(id){
 window.delPDV=delPDV;
 
 // COMPTES CRUD — avec actif/inactif (v4)
-function onCptOpChange(){
+function onTetePontChange(){
+  const checked=document.getElementById('mCptTetePont').checked;
+  document.getElementById('mCptBanqueRow').style.display=checked?'block':'none';
+  if(checked){
+    const banques=comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
+    document.getElementById('mCptBanqueRattachee').innerHTML=
+      '<option value="">— Sélectionner une banque —</option>'+
+      banques.map(b=>`<option value="${b.id}">${b.nom}</option>`).join('');
+  }
+}
+window.onTetePontChange=onTetePontChange;
   const op=document.getElementById('mCptOp').value;
   document.getElementById('mCptOpLibre').style.display=op==='AUTRE'?'block':'none';
   const cm={OM:'#ff6b00',MTN:'#f5a623',WAVE:'#22d3ee',MOOV:'#00d68f',CASH:'#00d68f',
@@ -1377,13 +1438,29 @@ function openCompteModal(id){
   document.getElementById('mCptTitle').textContent=id?'Modifier compte':'Nouveau compte financier';
   document.getElementById('mCptId').value=id||'';
   const c=id?comptes.find(x=>x.id===id):{};
-  document.getElementById('mCptNom').value=c.nom||'';document.getElementById('mCptCat').value=c.cat||'mobile_money';
-  document.getElementById('mCptOp').value=c.op||'OM';document.getElementById('mCptOpLibre').value=c.opLibre||'';
+  document.getElementById('mCptNom').value=c.nom||'';
+  document.getElementById('mCptCat').value=c.cat||'mobile_money';
+  document.getElementById('mCptOp').value=c.op||'OM';
+  document.getElementById('mCptOpLibre').value=c.opLibre||'';
   document.getElementById('mCptOpLibre').style.display=c.op==='AUTRE'?'block':'none';
-  document.getElementById('mCptNum').value=c.num||'';document.getElementById('mCptContact').value=c.contact||'';
-  document.getElementById('mCptSolde').value=c.soldeInit||0;document.getElementById('mCptColor').value=c.color||'#4d8af0';
+  document.getElementById('mCptNum').value=c.num||'';
+  document.getElementById('mCptContact').value=c.contact||'';
+  document.getElementById('mCptSolde').value=c.soldeInit||0;
+  document.getElementById('mCptColor').value=c.color||'#4d8af0';
   document.getElementById('mCptNotes').value=c.notes||'';
   const actifEl=document.getElementById('mCptActif');if(actifEl)actifEl.checked=c.actif!==false;
+  // Tête de pont
+  const tetePont=document.getElementById('mCptTetePont');
+  if(tetePont){
+    tetePont.checked=c.tetePont||false;
+    document.getElementById('mCptBanqueRow').style.display=c.tetePont?'block':'none';
+    if(c.tetePont){
+      const banques=comptes.filter(b=>b.cat==='banque'&&b.actif!==false);
+      document.getElementById('mCptBanqueRattachee').innerHTML=
+        '<option value="">— Sélectionner une banque —</option>'+
+        banques.map(b=>`<option value="${b.id}"${c.banqueRattachee===b.id?' selected':''}>${b.nom}</option>`).join('');
+    }
+  }
   openM('mCompte');
 }
 window.openCompteModal=openCompteModal;
@@ -1394,11 +1471,13 @@ async function saveCompte(){
   const id=document.getElementById('mCptId').value;const soldeInit=parseFloat(document.getElementById('mCptSolde').value)||0;
   const op=document.getElementById('mCptOp').value;
   const actifEl=document.getElementById('mCptActif');
+  const tetePont=document.getElementById('mCptTetePont')?.checked||false;
+  const banqueRattachee=tetePont?document.getElementById('mCptBanqueRattachee')?.value||'':'';
   const data={nom,cat:document.getElementById('mCptCat').value,op,
     opLibre:op==='AUTRE'?document.getElementById('mCptOpLibre').value:'',
     num:document.getElementById('mCptNum').value,contact:document.getElementById('mCptContact').value,
     soldeInit,color:document.getElementById('mCptColor').value,notes:document.getElementById('mCptNotes').value,
-    actif:actifEl?actifEl.checked:true};
+    actif:actifEl?actifEl.checked:true,tetePont,banqueRattachee};
   if(id){const c=comptes.find(x=>x.id===id);const diff=soldeInit-c.soldeInit;c.solde=(c.solde||0)+diff;Object.assign(c,data);await saveItem('comptes',c);}
   else{data.id=uid();data.solde=soldeInit;comptes.push(data);await saveItem('comptes',data);}
   populateSelects();closeM('mCompte');renderAdmin();toast('Compte enregistré ✓');renderDashboard();
