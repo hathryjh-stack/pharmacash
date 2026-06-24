@@ -376,8 +376,8 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
 <div class="modal-ov" id="mPetiteCaisse"><div class="modal"><div class="modal-hdr"><div class="modal-title" id="pcMTitle">Petite caisse</div><button class="close-x" onclick="closeM('mPetiteCaisse')">✕</button></div><div class="modal-body">
   <input type="hidden" id="pcMType">
   <div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="pcMDate"></div><div class="fg"><label>Montant (FCFA) *</label><input type="number" id="pcMMontant" min="0" placeholder="0"></div></div>
-  <div class="fg2"><div class="fg"><label>Libellé *</label><input type="text" id="pcMLibelle" placeholder="Description…"></div>
-  <div class="fg"><label>Catégorie</label>
+  <div class="fg"><label>Libellé</label><input type="text" id="pcMLibelle" placeholder="Description…"></div>
+  <div id="pcCategorieRow" class="fg2"><div class="fg"><label>Catégorie</label>
     <select id="pcMCategorie" onchange="onPCCategorieChange()">
       <option value="approvisionnement">Approvisionnement</option>
       <option value="fournitures">Fournitures bureau</option>
@@ -389,7 +389,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <option value="__custom__">✏️ Créer une catégorie…</option>
     </select>
   </div></div>
-  <div class="fg2">
+  <div id="pcModePaiementRow" class="fg2" style="display:flex">
     <div class="fg"><label>Mode de paiement</label>
       <select id="pcModePaiement">
         <option value="Espèces">💵 Espèces</option>
@@ -398,9 +398,11 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
         <option value="Mobile Money">📱 Mobile Money</option>
       </select>
     </div>
-    <div class="fg"><label>Responsable dépense</label><input type="text" id="pcResponsable" placeholder="Nom du responsable…"></div>
   </div>
-  <div id="pcCaisseSource" style="display:none"><div class="fg"><label>Débiter depuis</label><select id="pcCaisseId"></select></div></div>
+  <div id="pcResponsableRow" class="fg" style="display:flex"><label>Responsable dépense</label><input type="text" id="pcResponsable" placeholder="Nom du responsable…"></div>
+  <div id="pcCaisseSource" style="display:none">
+    <div class="fg"><label>Débiter depuis *</label><select id="pcCaisseId"></select></div>
+  </div>
   <div style="background:var(--surface2);border-radius:8px;padding:10px;margin:8px 0" id="pcBenefSection">
     <div style="font-size:.75rem;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:8px">Bénéficiaire</div>
     <div class="fg2">
