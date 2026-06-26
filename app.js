@@ -397,6 +397,178 @@ function renderDashboard(){
 window.renderDashboard=renderDashboard;
 
 // ══════════════════════════════════════════════════════
+// MOTEUR D'EXPORT UNIVERSEL (v4.1)
+// Utilisable depuis toutes les pages
+// ══════════════════════════════════════════════════════
+function exportUniversel(titre, colonnes, lignes, opts={}){
+  const {format='print', periode='', filtres=''}=opts;
+  const now=new Date().toLocaleString('fr-FR');
+  const totaux=opts.totaux||[];
+
+  if(format==='excel'){
+    const rows=[[PHARMACIE_NOM],[titre],[periode?`Période : ${periode}`:''][filtres?`Filtres : ${filtres}`:''],[`Généré le : ${now}`],[],colonnes,...lignes];
+    if(totaux.length)rows.push([]);rows.push(...totaux);
+    const csv=rows.filter(r=>r!==undefined&&r!=='').map(r=>(Array.isArray(r)?r:[r]).map(cell=>{const s=String(cell??'').replace(/"/g,'""');return s.includes(';')||s.includes('"')?`"${s}"`:s;}).join(';')).join('\n');
+    const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`${titre.replace(/\s+/g,'_')}_${today()}.csv`;a.click();URL.revokeObjectURL(a.href);
+    toast('Export Excel (.csv) téléchargé ✓');
+    return;
+  }
+
+  // HTML commun pour print et Word
+  const tableHTML=`
+  <table>
+    <thead><tr>${colonnes.map(c=>`<th>${c}</th>`).join('')}</tr></thead>
+    <tbody>
+      ${lignes.map((row,i)=>`<tr style="background:${i%2?'#fafafa':'#fff'}">${row.map(cell=>`<td>${cell??'—'}</td>`).join('')}</tr>`).join('')}
+      ${totaux.map(row=>`<tr style="background:#e8f5f0;font-weight:700">${row.map(cell=>`<td>${cell??''}</td>`).join('')}</tr>`).join('')}
+    </tbody>
+  </table>`;
+
+  const htmlDoc=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titre}</title>
+  <style>
+    @page{size:A4 landscape;margin:10mm}
+    body{font-family:Arial,sans-serif;font-size:9pt;color:#111}
+    .header{display:flex;justify-content:space-between;border-bottom:2px solid #00C47A;padding-bottom:8px;margin-bottom:12px}
+    .pharma{font-size:12pt;font-weight:800;color:#00C47A}
+    .titre{font-size:10pt;font-weight:700}
+    .meta{font-size:7pt;color:#999}
+    table{width:100%;border-collapse:collapse;font-size:8.5pt}
+    th{background:#f0f0f0;padding:5px 7px;text-align:left;border:1px solid #ddd;font-size:8pt}
+    td{padding:4px 7px;border:1px solid #eee}
+    .footer{margin-top:12px;font-size:7pt;color:#aaa;text-align:center}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body>
+  <div class="header">
+    <div><div class="pharma">${PHARMACIE_NOM}</div><div class="titre">${titre}</div>
+    ${periode?`<div class="meta">${periode}</div>`:''}
+    ${filtres?`<div class="meta">Filtres : ${filtres}</div>`:''}
+    </div>
+    <div style="text-align:right"><div class="meta">Généré le ${now}</div><div class="meta">${lignes.length} ligne(s)</div></div>
+  </div>
+  ${tableHTML}
+  <div class="footer">PharmaCash Pro — Document confidentiel</div>
+  ${format==='print'?`<script>window.onload=()=>window.print()<\/script>`:''}
+  </body></html>`;
+
+  if(format==='word'){
+    const blob=new Blob([htmlDoc],{type:'application/msword;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download=`${titre.replace(/\s+/g,'_')}_${today()}.doc`;a.click();URL.revokeObjectURL(a.href);
+    toast('Export Word (.doc) téléchargé ✓');
+    return;
+  }
+  // print ou pdf
+  const w=window.open('','_blank');
+  w.document.write(htmlDoc);w.document.close();
+  if(format==='pdf')toast('Dans la fenêtre → "Enregistrer en PDF"');
+}
+window.exportUniversel=exportUniversel;
+
+// Bouton d'export réutilisable (retourne le HTML du bouton)
+function btnExport(fnName){
+  return`<div style="display:flex;gap:4px">
+    <button class="btn btn-ghost btn-xs" onclick="${fnName}('print')" title="Imprimer">🖨️</button>
+    <button class="btn btn-ghost btn-xs" onclick="${fnName}('excel')" title="Export Excel">📊</button>
+    <button class="btn btn-ghost btn-xs" onclick="${fnName}('word')" title="Export Word">📝</button>
+    <button class="btn btn-ghost btn-xs" onclick="${fnName}('pdf')" title="Télécharger PDF">📄</button>
+  </div>`;
+}
+
+// ── EXPORT RECETTES ───────────────────────────────────
+function exportRecettes(format){
+  let data=[...recettes].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+  const dF=document.getElementById('fRDate').value,pF=document.getElementById('fRPDV').value,cF=document.getElementById('fRCanal').value;
+  if(currentUser.role!=='admin'&&currentUser.pdv)data=data.filter(r=>r.pdv===currentUser.pdv);
+  if(dF)data=data.filter(r=>r.date===dF);if(pF)data=data.filter(r=>r.pdv===pF);if(cF)data=data.filter(r=>r.canal===cF);
+  const total=data.reduce((s,r)=>s+(r.montant||0),0);
+  const filtres=[dF?`Date: ${fmtD(dF)}`:'',pF?`PDV: ${pdvs.find(p=>p.id===pF)?.nom||pF}`:'',cF?`Canal: ${MM_LABEL[cF]||cF}`:''].filter(Boolean).join(' | ');
+  exportUniversel('Recettes journalières',
+    ['Date','PDV','Canal','Type','Montant (FCFA)','Référence','Saisi par'],
+    data.map(r=>[fmtD(r.date),pdvs.find(p=>p.id===r.pdv)?.nom||r.pdv,MM_LABEL[r.canal]||r.canal,r.type,fmt(r.montant),r.ref||'—',r.saisie||'—']),
+    {format,filtres,totaux:[['TOTAL','','','',fmt(total)+' FCFA','','']]});
+}
+window.exportRecettes=exportRecettes;
+
+// ── EXPORT VERSEMENTS ─────────────────────────────────
+function exportVersements(format){
+  let data=[...versements].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+  const dF=document.getElementById('fVDate').value,pF=document.getElementById('fVPDV').value,tF=document.getElementById('fVType').value,sF=document.getElementById('fVStatut').value;
+  if(dF)data=data.filter(v=>v.date===dF);if(pF)data=data.filter(v=>v.pdv===pF);if(tF)data=data.filter(v=>v.type===tF);if(sF)data=data.filter(v=>v.statut===sF);
+  const total=data.reduce((s,v)=>s+(v.montant||0),0);
+  const filtres=[dF?`Date: ${fmtD(dF)}`:'',pF?`PDV: ${pdvs.find(p=>p.id===pF)?.nom||pF}`:'',tF?`Type: ${tF}`:'',sF?`Statut: ${sF}`:''].filter(Boolean).join(' | ');
+  exportUniversel('Versements',
+    ['Date','PDV','Fréq.','Type','Compte dest.','Référence','Montant (FCFA)','Statut','Saisi par'],
+    data.map(v=>[fmtD(v.date),pdvs.find(p=>p.id===v.pdv)?.nom||v.pdv,v.freq||'—',MM_LABEL[v.type]||v.type,comptes.find(c=>c.id===v.compte)?.nom||'—',v.ref||'—',fmt(v.montant),v.statut,v.saisie||'—']),
+    {format,filtres,totaux:[['TOTAL','','','','','',fmt(total)+' FCFA','','']]});
+}
+window.exportVersements=exportVersements;
+
+// ── EXPORT PETITE CAISSE ──────────────────────────────
+function exportPetiteCaisse(format){
+  const data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+  const solde=petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
+  exportUniversel('Petite Caisse',
+    ['Date & Heure','Type','Libellé','Catégorie','Référence','Montant (FCFA)','Solde après','Saisi par'],
+    data.map(m=>[`${fmtD(m.date)} ${m.heure||''}`,m.type==='appro'?'Approvisionnement':'Dépense',m.libelle||'—',m.categorie||'—',m.ref||'—',(m.type==='appro'?'+':'-')+fmt(m.montant),fmt(m.soldeApres||0),m.saisie||'—']),
+    {format,totaux:[['','','','','','SOLDE ACTUEL',fmt(solde)+' FCFA','']]}); 
+}
+window.exportPetiteCaisse=exportPetiteCaisse;
+
+// ── EXPORT CAISSE ─────────────────────────────────────
+function exportCaisse(format){
+  const date=document.getElementById('caisseDate')?.value||today();
+  const data=clotures.filter(c=>c.date===date).sort((a,b)=>a.vacation?.localeCompare(b.vacation||'')||0);
+  const totM=data.reduce((s,c)=>s+(c.totalMachine||0),0);
+  const totV=data.reduce((s,c)=>s+(c.totalVerse||0),0);
+  const totE=data.reduce((s,c)=>s+(c.ecart||0),0);
+  exportUniversel(`Clôture de caisse — ${fmtD(date)}`,
+    ['Vacation','Caissière','Machine','Cash versé','MM versé','Total versé','Écart','Statut','Validé par'],
+    data.map(c=>[c.vacation,c.caissiere,fmt(c.totalMachine),fmt(c.cashVerse),fmt((c.omVerse||0)+(c.mtnVerse||0)+(c.waveVerse||0)+(c.moovVerse||0)),fmt(c.totalVerse),(c.ecart>0?'+':c.ecart<0?'−':'')+fmt(Math.abs(c.ecart||0)),c.statut,c.valide_par||'—']),
+    {format,totaux:[['TOTAL','',fmt(totM),'','',fmt(totV),(totE>0?'+':totE<0?'−':'')+fmt(Math.abs(totE)),'','']]}); 
+}
+window.exportCaisse=exportCaisse;
+
+// ── EXPORT MOUVEMENTS BANCAIRES ───────────────────────
+function exportMvts(format){
+  const dF=document.getElementById('fMDate').value,cF=document.getElementById('fMCompte').value,tF=document.getElementById('fMType').value;
+  let data=[...mvts,...transferts.map(t=>({...t,libelle:`Transfert MM→Banque`,_trf:true}))].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+  if(dF)data=data.filter(m=>m.date===dF);if(cF)data=data.filter(m=>m.compte===cF||m.compteSrc===cF||m.compteDst===cF);if(tF)data=data.filter(m=>m.type===tF);
+  const filtres=[dF?`Date: ${fmtD(dF)}`:'',cF?`Compte: ${comptes.find(c=>c.id===cF)?.nom||cF}`:'',tF?`Type: ${tF}`:''].filter(Boolean).join(' | ');
+  exportUniversel('Mouvements financiers',
+    ['Date','Compte','Type','Libellé','Référence','Montant (FCFA)','Solde après','Saisi par'],
+    data.map(m=>[fmtD(m.date),comptes.find(c=>c.id===(m.compte||m.compteSrc))?.nom||'—',m.type,m.libelle||'—',m.ref||'—',(m.type==='entrée'?'+':'-')+fmt(m.montant),fmt(m.soldeApres||0),m.saisie||'—']),
+    {format,filtres});
+}
+window.exportMvts=exportMvts;
+
+// ── EXPORT SUIVI CAISSIÈRES ───────────────────────────
+function exportSuiviCaissiere(format){
+  const periode=document.getElementById('scPeriode')?.value||'mois';
+  const t=today();let debut,fin;
+  if(periode==='jour'){debut=t;fin=t;}
+  else if(periode==='semaine'){const b=weekBounds(t);debut=b.start;fin=b.end;}
+  else if(periode==='mois'){debut=t.slice(0,7)+'-01';fin=t;}
+  else{debut=document.getElementById('scDebut')?.value||t;fin=document.getElementById('scFin')?.value||t;}
+  const dayC=clotures.filter(c=>c.date>=debut&&c.date<=fin);
+  const byCaissiere={};
+  dayC.forEach(c=>{
+    if(!byCaissiere[c.caissiere])byCaissiere[c.caissiere]={nom:c.caissiere,totalMachine:0,cashVerse:0,mmVerse:0,totalVerse:0,ecart:0,nb:0};
+    const b=byCaissiere[c.caissiere];
+    b.totalMachine+=(c.totalMachine||0);b.cashVerse+=(c.cashVerse||0);
+    b.mmVerse+=(c.omVerse||0)+(c.mtnVerse||0)+(c.waveVerse||0)+(c.moovVerse||0);
+    b.totalVerse+=(c.totalVerse||0);b.ecart+=(c.ecart||0);b.nb++;
+  });
+  const data=Object.values(byCaissiere);
+  exportUniversel(`Suivi caissières — ${fmtD(debut)} au ${fmtD(fin)}`,
+    ['Caissière','Machine','Cash versé','MM versé','Total versé','Écart','Vacations'],
+    data.map(c=>[(c.nom),(fmt(c.totalMachine)),(fmt(c.cashVerse)),(fmt(c.mmVerse)),(fmt(c.totalVerse)),((c.ecart>0?'+':c.ecart<0?'−':'')+fmt(Math.abs(c.ecart))),(c.nb+' vacation(s)')]),
+    {format,periode:`${fmtD(debut)} au ${fmtD(fin)}`});
+}
+window.exportSuiviCaissiere=exportSuiviCaissiere;
+
+// ══════════════════════════════════════════════════════
 // RECETTES
 // ══════════════════════════════════════════════════════
 function renderRecettes(){
@@ -731,17 +903,34 @@ function onVPDVChange(){
 }
 window.onVPDVChange=onVPDVChange;
 
-async function crediterCompte(compteId,montant,pdvId,ref,date){
+const FRAIS_MM_PCT=0.01; // 1% frais opérateur mobile money
+
+async function crediterCompte(compteId,montant,pdvId,ref,date,typeVers=''){
   const c=comptes.find(x=>x.id===compteId);if(!c)return;
-  c.solde=(c.solde||0)+montant;await saveItem('comptes',c);
-  const m={id:uid(),date,compte:compteId,type:'entrée',
-    libelle:`Versement ${pdvs.find(p=>p.id===pdvId)?.nom||pdvId}`,
-    ref,montant,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
+  const isMM_vers=['OM','MTN','WAVE','MOOV'].includes(typeVers);
+  const frais=isMM_vers?Math.round(montant*FRAIS_MM_PCT):0;
+  const montantNet=montant-frais;
+  // Crédite le montant net
+  c.solde=(c.solde||0)+montantNet;await saveItem('comptes',c);
+  const pdvNom=pdvs.find(p=>p.id===pdvId)?.nom||pdvId;
+  const m={id:uid(),date,compte:compteId,type:'entrée',rubrique:'Versement PDV',
+    libelle:`Versement ${pdvNom}${frais?` (net après frais ${typeVers} 1%)`:''}`,
+    ref,montant:montantNet,montantBrut:montant,frais,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
   mvts.push(m);await saveItem('mvts',m);
+  // Enregistre les frais comme sortie si MM
+  if(frais>0){
+    const mFrais={id:uid(),date,compte:compteId,type:'sortie',rubrique:'Frais opérateur MM',
+      libelle:`Frais ${typeVers} 1% — ${pdvNom}`,
+      ref,montant:frais,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
+    mvts.push(mFrais);await saveItem('mvts',mFrais);
+    // Débite aussi le solde pour les frais
+    c.solde=c.solde-frais;await saveItem('comptes',c);
+  }
 }
 async function confirmerV(id){
   const v=versements.find(x=>x.id===id);if(!v||v.statut==='confirmé')return;
-  v.statut='confirmé';await crediterCompte(v.compte,v.montant,v.pdv,v.ref,v.date);
+  v.statut='confirmé';
+  await crediterCompte(v.compte,v.montant,v.pdv,v.ref,v.date,v.type);
   await saveItem('versements',v);renderVersements();toast('Confirmé ✓');renderDashboard();
 }
 window.confirmerV=confirmerV;
@@ -1006,17 +1195,50 @@ function renderMvts(){
   }).join('');
 }
 window.renderMvts=renderMvts;
+// Rubriques comptables — stockées en LocalStorage, modifiables
+let rubriques = LS.g('rubriques') || [
+  'Salaires & charges','Loyer','Électricité / Eau','Fournitures bureau',
+  'Achat médicaments','Transport','Entretien & réparations',
+  'Frais bancaires','Remboursement emprunt','Approvisionnement banque',
+  'Avance personnel','Règlement fournisseur','Frais médicaux','Autre'
+];
+function saveRubriques(){LS.s('rubriques',rubriques);}
+
+function getRubriquesOptions(){
+  return rubriques.map(r=>`<option value="${r}">${r}</option>`).join('')+
+    '<option value="__new__">✏️ Nouvelle rubrique…</option>';
+}
+function onMvtRubriqueChange(){
+  const sel=document.getElementById('mMRubrique');
+  if(sel.value==='__new__'){
+    const n=prompt('Nom de la nouvelle rubrique :');
+    if(n&&n.trim()){
+      rubriques.splice(rubriques.length-1,0,n.trim());
+      saveRubriques();
+      sel.innerHTML=getRubriquesOptions();
+      sel.value=n.trim();
+    } else sel.value=rubriques[0];
+  }
+}
+window.onMvtRubriqueChange=onMvtRubriqueChange;
+
 function openMvtModal(){
   document.getElementById('mMDate').value=today();
-  ['mMMontant','mMRef','mMNotes'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('mMSaisie').value=currentUser.nom;openM('mMvt');
+  document.getElementById('mMRubrique').innerHTML=getRubriquesOptions();
+  ['mMMontant','mMRef','mMNotes','mMBenefNom','mMBenefCNI','mMBenefTel','mMResponsable'].forEach(id=>{
+    const e=document.getElementById(id);if(e)e.value='';
+  });
+  document.getElementById('mMBenefType').value='Particulier';
+  document.getElementById('mMType').value='sortie';
+  document.getElementById('mMSaisie').value=currentUser.nom;
+  openM('mMvt');
 }
 window.openMvtModal=openMvtModal;
 async function saveMvt(){
   const date=document.getElementById('mMDate').value,compteId=document.getElementById('mMCompte').value,
     type=document.getElementById('mMType').value,montant=parseFloat(document.getElementById('mMMontant').value);
   if(!date||!compteId||!montant){toast('Champs manquants','err');return;}
-  // Anti-doublons général sur les mouvements
+  const rubrique=document.getElementById('mMRubrique')?.value||'';
   const doublonMvt=mvts.find(m=>m.compte===compteId&&m.date===date&&m.type===type&&Math.abs((m.montant||0)-montant)<=montant*0.01);
   if(doublonMvt&&!confirm(`⚠️ Doublon détecté !\nMouvement identique déjà enregistré :\n${fmtD(doublonMvt.date)} — ${comptes.find(c=>c.id===compteId)?.nom||compteId} — ${type} — ${fmt(doublonMvt.montant)} ${DEVISE}\n\nConfirmer quand même ?`))return;
   const c=comptes.find(x=>x.id===compteId);
@@ -1026,19 +1248,19 @@ async function saveMvt(){
   const benef_cni=document.getElementById('mMBenefCNI')?.value.trim()||'';
   const benef_tel=document.getElementById('mMBenefTel')?.value.trim()||'';
   const responsable=document.getElementById('mMResponsable')?.value.trim()||currentUser.nom;
-  const item={id:uid(),date,compte:compteId,type,libelle:document.getElementById('mMNotes').value,
+  const libelle=document.getElementById('mMNotes').value||rubrique;
+  const item={id:uid(),date,compte:compteId,type,rubrique,libelle,
     ref:document.getElementById('mMRef').value,montant,soldeApres:c?.solde||0,
     benef_nom,benef_type,benef_cni,benef_tel,responsable,
     saisie:document.getElementById('mMSaisie').value,ts:Date.now()};
   mvts.push(item);await saveItem('mvts',item);
   closeM('mMvt');toast('Mouvement enregistré ✓');renderBanques();renderDashboard();
-  // Reçu automatique pour les sorties
   if(type==='sortie'){
     if(confirm('Imprimer le reçu de caisse ?')){
       genererRecuCaisse({
         date,heure:nowTm(),
-        libelle:item.libelle||'Sortie de caisse',
-        categorie:c?.nom||'',
+        libelle:libelle||'Sortie de caisse',
+        categorie:rubrique||c?.nom||'',
         modePaiement:c?.cat==='mobile_money'?'Mobile Money':c?.cat==='banque'?'Virement/Chèque':'Espèces',
         ref:item.ref,montant,typeRecu:'Sortie de caisse',
         caisse:c?.nom||'Grande caisse',
