@@ -137,14 +137,29 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <!-- RECETTES -->
       <div class="pg" id="pg-recettes">
         <div class="pg-header"><div><div class="pg-title">Recettes journalières</div><div class="pg-sub">Saisie manuelle ou import SMS/WhatsApp pour tous les PDV</div></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-ghost btn-sm" onclick="openSMSModal()">📲 SMS / WhatsApp</button><button class="btn btn-green btn-sm" onclick="openRecetteModal()">+ Recette</button></div></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <div style="display:flex;gap:3px" title="Exporter">
+              <button class="btn btn-ghost btn-xs" onclick="exportRecettes('print')" title="Imprimer">🖨️</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportRecettes('excel')" title="Excel">📊</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportRecettes('word')" title="Word">📝</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportRecettes('pdf')" title="PDF">📄</button>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="openSMSModal()">📲 SMS / WhatsApp</button>
+            <button class="btn btn-green btn-sm" onclick="openRecetteModal()">+ Recette</button>
+          </div></div>
         <div class="filters"><input type="date" id="fRDate" class="fi" onchange="renderRecettes()"><select id="fRPDV" class="fi" onchange="renderRecettes()"><option value="">Tous PDV</option></select><select id="fRCanal" class="fi" onchange="renderRecettes()"><option value="">Tous canaux</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fRDate','fRPDV','fRCanal');renderRecettes()">✕</button></div>
         <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>PDV</th><th>Canal</th><th>Type</th><th>Montant</th><th>Réf.</th><th>Saisi par</th><th></th></tr></thead><tbody id="recTbody"></tbody></table></div></div>
       </div>
       <!-- VERSEMENTS -->
       <div class="pg" id="pg-versements">
         <div class="pg-header"><div><div class="pg-title">Versements</div><div class="pg-sub">Plusieurs modes de versement par dépôt et par période</div></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <div style="display:flex;gap:3px">
+            <button class="btn btn-ghost btn-xs" onclick="exportVersements('print')" title="Imprimer">🖨️</button>
+            <button class="btn btn-ghost btn-xs" onclick="exportVersements('excel')" title="Excel">📊</button>
+            <button class="btn btn-ghost btn-xs" onclick="exportVersements('word')" title="Word">📝</button>
+            <button class="btn btn-ghost btn-xs" onclick="exportVersements('pdf')" title="PDF">📄</button>
+          </div>
           <button class="btn btn-ghost btn-sm" onclick="openSMSVersModal()">📲 SMS / WhatsApp</button>
           <button class="btn btn-green btn-sm" onclick="openVersModal()">+ Versement(s)</button>
         </div></div>
@@ -153,7 +168,17 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       </div>
       <!-- CAISSE -->
       <div class="pg" id="pg-caisse">
-        <div class="pg-header"><div><div class="pg-title">Clôture de caisse — Principale</div></div><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="openCaisseModal()">+ Clôture</button><button class="btn btn-green btn-sm admin-only" onclick="validerToutesClot()">✓ Valider toutes</button></div></div>
+        <div class="pg-header"><div><div class="pg-title">Clôture de caisse — Principale</div></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <div style="display:flex;gap:3px">
+            <button class="btn btn-ghost btn-xs" onclick="exportCaisse('print')" title="Imprimer">🖨️</button>
+            <button class="btn btn-ghost btn-xs" onclick="exportCaisse('excel')" title="Excel">📊</button>
+            <button class="btn btn-ghost btn-xs" onclick="exportCaisse('word')" title="Word">📝</button>
+            <button class="btn btn-ghost btn-xs" onclick="exportCaisse('pdf')" title="PDF">📄</button>
+          </div>
+          <button class="btn btn-ghost btn-sm" onclick="openCaisseModal()">+ Clôture</button>
+          <button class="btn btn-green btn-sm admin-only" onclick="validerToutesClot()">✓ Valider toutes</button>
+        </div></div>
         <div class="tab-day-nav"><button class="btn btn-ghost btn-sm" onclick="caisseNavDay(-1)">←</button><input type="date" id="caisseDate" onchange="renderCaisse()"><button class="btn btn-ghost btn-sm" onclick="caisseNavDay(1)">→</button><button class="btn btn-ghost btn-sm" onclick="document.getElementById('caisseDate').value=today();renderCaisse()">Auj.</button></div>
         <div class="summary-caisse" id="caisseSummary"></div>
         <div class="caisse-grid" id="caisseGrid"></div>
@@ -162,7 +187,13 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <!-- BANQUES -->
       <div class="pg" id="pg-banques">
         <div class="pg-header"><div><div class="pg-title">Établissements financiers</div><div class="pg-sub">✓ Disponible = Banques/Caisse · ⏳ En transit = Mobile Money</div></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <div style="display:flex;gap:3px">
+              <button class="btn btn-ghost btn-xs" onclick="exportMvts('print')" title="Imprimer">🖨️</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportMvts('excel')" title="Excel">📊</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportMvts('word')" title="Word">📝</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportMvts('pdf')" title="PDF">📄</button>
+            </div>
             <button class="btn btn-amber btn-sm" onclick="openTransfertModal()">🔄 Transfert MM → Banque</button>
             <button class="btn btn-green btn-sm" onclick="openMvtModal()">+ Mouvement</button>
           </div></div>
@@ -185,8 +216,14 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <div class="pg" id="pg-petitecaisse">
         <div class="pg-header">
           <div><div class="pg-title">💰 Petite caisse</div><div class="pg-sub">Approvisionnements et dépenses en espèces</div></div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <div style="font-size:.85rem;color:var(--text2)">Solde théorique : <b id="pcSolde" style="color:var(--green)">0 FCFA</b></div>
+            <div style="display:flex;gap:3px">
+              <button class="btn btn-ghost btn-xs" onclick="exportPetiteCaisse('print')" title="Imprimer">🖨️</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportPetiteCaisse('excel')" title="Excel">📊</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportPetiteCaisse('word')" title="Word">📝</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportPetiteCaisse('pdf')" title="PDF">📄</button>
+            </div>
             <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻</button>
             <button class="btn btn-amber btn-sm" onclick="ouvrirCloturePetiteCaisse()">🔒 Clôturer</button>
             <button class="btn btn-blue btn-sm" onclick="openPCModal('appro')">+ Approvisionner</button>
@@ -199,7 +236,13 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <div class="pg" id="pg-caissiere">
         <div class="pg-header">
           <div><div class="pg-title">👤 Suivi caissières</div><div class="pg-sub">Performance par caissière sur la période</div></div>
-          <div style="display:flex;gap:8px;align-items:center">
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <div style="display:flex;gap:3px">
+              <button class="btn btn-ghost btn-xs" onclick="exportSuiviCaissiere('print')" title="Imprimer">🖨️</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportSuiviCaissiere('excel')" title="Excel">📊</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportSuiviCaissiere('word')" title="Word">📝</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportSuiviCaissiere('pdf')" title="PDF">📄</button>
+            </div>
             <select class="fi" id="scPeriode" onchange="onSCPeriodeChange()" style="max-width:160px"><option value="jour">Aujourd'hui</option><option value="semaine">Cette semaine</option><option value="mois" selected>Ce mois</option><option value="custom">Personnalisé</option></select>
             <div id="scCustomDates" style="display:none;gap:6px"><input type="date" id="scDebut" class="fi" onchange="renderSuiviCaissiere()" style="max-width:140px"><input type="date" id="scFin" class="fi" onchange="renderSuiviCaissiere()" style="max-width:140px"></div>
             <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻</button>
@@ -346,13 +389,36 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
 </div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mVers2')">Annuler</button><button class="btn btn-green" onclick="saveVersements()">Enregistrer tout</button></div></div></div>
 
 <!-- MOUVEMENT MANUEL -->
-<div class="modal-ov" id="mMvt"><div class="modal"><div class="modal-hdr"><div class="modal-title">Mouvement financier</div><button class="close-x" onclick="closeM('mMvt')">✕</button></div><div class="modal-body"><div class="fg2"><div class="fg"><label>Date *</label><input type="date" id="mMDate"></div><div class="fg"><label>Compte *</label><select id="mMCompte"></select></div></div><div class="fg2"><div class="fg"><label>Type</label><select id="mMType"><option value="entrée">Entrée</option><option value="sortie">Sortie</option><option value="virement interne">Virement interne</option></select></div><div class="fg"><label>Référence</label><input type="text" id="mMRef"></div></div><div class="fg2"><div class="fg"><label>Montant *</label><input type="number" id="mMMontant" min="0"></div><div class="fg"><label>Responsable</label><input type="text" id="mMResponsable" placeholder="Nom du responsable…"></div></div><div class="fg1"><div class="fg"><label>Libellé / Notes</label><textarea id="mMNotes" rows="2"></textarea></div></div>
-<div style="background:var(--surface2);border-radius:8px;padding:10px;margin:8px 0">
-  <div style="font-size:.75rem;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:8px">Bénéficiaire (pour reçu)</div>
-  <div class="fg2"><div class="fg"><label>Type</label><select id="mMBenefType"><option value="Particulier">👤 Particulier</option><option value="Société">🏢 Société</option></select></div><div class="fg"><label>Nom / Société</label><input type="text" id="mMBenefNom" placeholder="Nom complet ou raison sociale…"></div></div>
-  <div class="fg2"><div class="fg"><label>CNI / Identifiant</label><input type="text" id="mMBenefCNI" placeholder="N° CNI ou RCCM…"></div><div class="fg"><label>Téléphone</label><input type="text" id="mMBenefTel" placeholder="+225…"></div></div>
+<div class="modal-ov" id="mMvt"><div class="modal"><div class="modal-hdr"><div class="modal-title">Mouvement financier</div><button class="close-x" onclick="closeM('mMvt')">✕</button></div><div class="modal-body">
+<div class="fg2">
+  <div class="fg"><label>Date *</label><input type="date" id="mMDate"></div>
+  <div class="fg"><label>Compte *</label><select id="mMCompte"></select></div>
 </div>
-<div class="fg"><label>Saisi par</label><input type="text" id="mMSaisie" readonly></div></div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mMvt')">Annuler</button><button class="btn btn-green" onclick="saveMvt()">Enregistrer</button></div></div></div>
+<div class="fg2">
+  <div class="fg"><label>Type *</label><select id="mMType"><option value="sortie">↓ Sortie / Dépense</option><option value="entrée">↑ Entrée / Recette</option><option value="virement interne">⇄ Virement interne</option></select></div>
+  <div class="fg"><label>Rubrique *</label><select id="mMRubrique" onchange="onMvtRubriqueChange()"></select></div>
+</div>
+<div class="fg2">
+  <div class="fg"><label>Montant (FCFA) *</label><input type="number" id="mMMontant" min="0" placeholder="0"></div>
+  <div class="fg"><label>Référence</label><input type="text" id="mMRef" placeholder="N° chèque, virement…"></div>
+</div>
+<div class="fg2">
+  <div class="fg"><label>Libellé / Notes</label><input type="text" id="mMNotes" placeholder="Description détaillée…"></div>
+  <div class="fg"><label>Responsable</label><input type="text" id="mMResponsable" placeholder="Nom du responsable…"></div>
+</div>
+<div style="background:var(--surface2);border-radius:8px;padding:10px;margin:8px 0">
+  <div style="font-size:.75rem;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:8px">Bénéficiaire / Tiers</div>
+  <div class="fg2">
+    <div class="fg"><label>Type</label><select id="mMBenefType"><option value="Particulier">👤 Particulier</option><option value="Société">🏢 Société</option><option value="Fournisseur">🏭 Fournisseur</option><option value="Banque">🏦 Banque</option></select></div>
+    <div class="fg"><label>Nom / Raison sociale</label><input type="text" id="mMBenefNom" placeholder="Nom complet ou société…"></div>
+  </div>
+  <div class="fg2">
+    <div class="fg"><label>CNI / RCCM / Identifiant</label><input type="text" id="mMBenefCNI" placeholder="N° identifiant…"></div>
+    <div class="fg"><label>Téléphone</label><input type="text" id="mMBenefTel" placeholder="+225…"></div>
+  </div>
+</div>
+<div class="fg"><label>Saisi par</label><input type="text" id="mMSaisie" readonly></div>
+</div><div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mMvt')">Annuler</button><button class="btn btn-green" onclick="saveMvt()">Enregistrer</button></div></div></div>
 
 <!-- TRANSFERT MM → BANQUE -->
 <div class="modal-ov" id="mTransfert"><div class="modal"><div class="modal-hdr"><div class="modal-title">🔄 Transfert Mobile Money → Banque</div><button class="close-x" onclick="closeM('mTransfert')">✕</button></div><div class="modal-body">
