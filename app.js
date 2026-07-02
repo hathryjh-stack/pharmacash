@@ -397,7 +397,62 @@ function renderDashboard(){
 window.renderDashboard=renderDashboard;
 
 // ══════════════════════════════════════════════════════
-// MOTEUR D'EXPORT UNIVERSEL (v4.1)
+// IMPORT SOLDES DÉMARRAGE (v4.1)
+// ══════════════════════════════════════════════════════
+async function importSoldesExcel(file){
+  const data = await file.arrayBuffer();
+  // Lecture via SheetJS (disponible en CDN)
+  if(!window.XLSX){toast('Chargement librairie Excel…','info');return;}
+  const wb = window.XLSX.read(data,{type:'array'});
+  const ws = wb.Sheets['COMPTES'];
+  if(!ws){toast('Feuille COMPTES introuvable','err');return;}
+  const rows = window.XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  // Cherche la ligne d'en-tête (ID_COMPTE)
+  let dataStart = -1;
+  for(let i=0;i<rows.length;i++){
+    if(rows[i][0]==='ID_COMPTE'){dataStart=i+2;break;} // +2 pour sauter la ligne labels
+  }
+  if(dataStart<0){toast('Format fichier invalide','err');return;}
+  let updated=0, errors=0;
+  for(let i=dataStart;i<rows.length;i++){
+    const row=rows[i];
+    const id=row[0];
+    const soldeInit=parseFloat(row[5])||0;
+    const solde=parseFloat(row[6])||0;
+    if(!id||typeof id!=='string'||!id.startsWith('CPT_'))continue;
+    // Cherche le compte dans la liste locale par ID fictif → on cherche par nom
+    const nom=row[1];
+    const c=comptes.find(x=>x.nom===nom||x.id===id);
+    if(!c){errors++;continue;}
+    c.solde=solde;
+    c.soldeInit=soldeInit;
+    await saveItem('comptes',c);
+    updated++;
+  }
+  toast(`✅ Import terminé — ${updated} compte(s) mis à jour${errors?` — ${errors} non trouvé(s)`:''}` );
+  renderDashboard();renderBanques();
+}
+window.importSoldesExcel=importSoldesExcel;
+
+function openImportSoldes(){
+  const input=document.createElement('input');
+  input.type='file';input.accept='.xlsx';
+  input.onchange=e=>{
+    const f=e.target.files[0];
+    if(!f)return;
+    if(!window.XLSX){
+      // Charge SheetJS dynamiquement
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload=()=>importSoldesExcel(f);
+      document.head.appendChild(s);
+    } else {
+      importSoldesExcel(f);
+    }
+  };
+  input.click();
+}
+window.openImportSoldes=openImportSoldes;
 // Utilisable depuis toutes les pages
 // ══════════════════════════════════════════════════════
 function exportUniversel(titre, colonnes, lignes, opts={}){
