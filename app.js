@@ -439,16 +439,26 @@ async function importSoldesExcel(file){
       const row=rows[i];
       const nomPDV=String(row[0]||'').trim();
       if(!nomPDV||nomPDV==='TOTAL'||nomPDV.startsWith('Ces soldes'))continue;
-      const p=pdvs.find(x=>x.nom.toLowerCase().trim()===nomPDV.toLowerCase().trim());
+      const p=pdvs.find(x=>{
+        const n=x.nom.toLowerCase().trim();
+        const f=nomPDV.toLowerCase().trim();
+        return n===f ||
+          // Alias pharmacie principale
+          (f==='pharmacie principale'&&(x.type==='principale'||n.includes('pharmacie')||n.includes('principale')||n.includes('central'))) ||
+          // Correspondance partielle dépôts
+          (f.startsWith('depot de ')&&n===f) ||
+          (f.startsWith('depot de ')&&n.includes(f.replace('depot de ',''))) ||
+          n.includes(f)||f.includes(n);
+      });
       if(!p){errors.push(`PDV : ${nomPDV}`);continue;}
       if(String(row[2]||'').trim())p.numOM=String(row[2]).trim();
-      if(parseFloat(row[3]))p.soldeOM=parseFloat(row[3]);
+      if(parseFloat(row[3]))p.soldeOM=Math.round(parseFloat(row[3]));
       if(String(row[4]||'').trim())p.numMTN=String(row[4]).trim();
-      if(parseFloat(row[5]))p.soldeMTN=parseFloat(row[5]);
+      if(parseFloat(row[5]))p.soldeMTN=Math.round(parseFloat(row[5]));
       if(String(row[6]||'').trim())p.numWave=String(row[6]).trim();
-      if(parseFloat(row[7]))p.soldeWave=parseFloat(row[7]);
+      if(parseFloat(row[7]))p.soldeWave=Math.round(parseFloat(row[7]));
       if(String(row[8]||'').trim())p.numMoov=String(row[8]).trim();
-      if(parseFloat(row[9]))p.soldeMoov=parseFloat(row[9]);
+      if(parseFloat(row[9]))p.soldeMoov=Math.round(parseFloat(row[9]));
       await saveItem('pdvs',p);updatedPDV++;
     }
   }
