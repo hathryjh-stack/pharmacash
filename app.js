@@ -397,40 +397,66 @@ function renderDashboard(){
 window.renderDashboard=renderDashboard;
 
 // ══════════════════════════════════════════════════════
-// IMPORT SOLDES DÉMARRAGE (v4.1)
+// IMPORT SOLDES DÉMARRAGE (v4.1) — COMPTES + MM_PDV
 // ══════════════════════════════════════════════════════
 async function importSoldesExcel(file){
-  const data = await file.arrayBuffer();
-  // Lecture via SheetJS (disponible en CDN)
   if(!window.XLSX){toast('Chargement librairie Excel…','info');return;}
-  const wb = window.XLSX.read(data,{type:'array'});
-  const ws = wb.Sheets['COMPTES'];
-  if(!ws){toast('Feuille COMPTES introuvable','err');return;}
-  const rows = window.XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-  // Cherche la ligne d'en-tête (ID_COMPTE)
-  let dataStart = -1;
-  for(let i=0;i<rows.length;i++){
-    if(rows[i][0]==='ID_COMPTE'){dataStart=i+2;break;} // +2 pour sauter la ligne labels
+  const data=await file.arrayBuffer();
+  const wb=window.XLSX.read(data,{type:'array'});
+  let updatedComptes=0,updatedPDV=0,errors=[];
+
+  // ── FEUILLE COMPTES ──────────────────────────────────
+  const ws1=wb.Sheets['COMPTES'];
+  if(ws1){
+    const rows=window.XLSX.utils.sheet_to_json(ws1,{header:1,defval:''});
+    let dataStart=-1;
+    for(let i=0;i<rows.length;i++){if(String(rows[i][0]).trim()==='ID_COMPTE'){dataStart=i+2;break;}}
+    if(dataStart>=0){
+      for(let i=dataStart;i<rows.length;i++){
+        const row=rows[i];
+        const id=String(row[0]||'').trim();
+        const nomFichier=String(row[1]||'').trim().toLowerCase();
+        const soldeInit=parseFloat(row[5])||0;
+        const solde=parseFloat(row[6])||0;
+        if(!id.startsWith('CPT_'))continue;
+        const c=comptes.find(x=>{
+          const n=x.nom.toLowerCase().trim();
+          return n===nomFichier||
+            (nomFichier.includes('caisse esp')&&(n.includes('caisse principale')||n==='caisse espèces'));
+        });
+        if(!c){errors.push(`Compte : ${row[1]}`);continue;}
+        c.solde=solde;c.soldeInit=soldeInit;
+        await saveItem('comptes',c);updatedComptes++;
+      }
+    }
   }
-  if(dataStart<0){toast('Format fichier invalide','err');return;}
-  let updated=0, errors=0;
-  for(let i=dataStart;i<rows.length;i++){
-    const row=rows[i];
-    const id=row[0];
-    const soldeInit=parseFloat(row[5])||0;
-    const solde=parseFloat(row[6])||0;
-    if(!id||typeof id!=='string'||!id.startsWith('CPT_'))continue;
-    // Cherche le compte dans la liste locale par ID fictif → on cherche par nom
-    const nom=row[1];
-    const c=comptes.find(x=>x.nom===nom||x.id===id);
-    if(!c){errors++;continue;}
-    c.solde=solde;
-    c.soldeInit=soldeInit;
-    await saveItem('comptes',c);
-    updated++;
+
+  // ── FEUILLE MM_PDV ───────────────────────────────────
+  const ws2=wb.Sheets['MM_PDV'];
+  if(ws2){
+    const rows=window.XLSX.utils.sheet_to_json(ws2,{header:1,defval:''});
+    for(let i=3;i<rows.length;i++){
+      const row=rows[i];
+      const nomPDV=String(row[0]||'').trim();
+      if(!nomPDV||nomPDV==='TOTAL'||nomPDV.startsWith('Ces soldes'))continue;
+      const p=pdvs.find(x=>x.nom.toLowerCase().trim()===nomPDV.toLowerCase().trim());
+      if(!p){errors.push(`PDV : ${nomPDV}`);continue;}
+      if(String(row[2]||'').trim())p.numOM=String(row[2]).trim();
+      if(parseFloat(row[3]))p.soldeOM=parseFloat(row[3]);
+      if(String(row[4]||'').trim())p.numMTN=String(row[4]).trim();
+      if(parseFloat(row[5]))p.soldeMTN=parseFloat(row[5]);
+      if(String(row[6]||'').trim())p.numWave=String(row[6]).trim();
+      if(parseFloat(row[7]))p.soldeWave=parseFloat(row[7]);
+      if(String(row[8]||'').trim())p.numMoov=String(row[8]).trim();
+      if(parseFloat(row[9]))p.soldeMoov=parseFloat(row[9]);
+      await saveItem('pdvs',p);updatedPDV++;
+    }
   }
-  toast(`✅ Import terminé — ${updated} compte(s) mis à jour${errors?` — ${errors} non trouvé(s)`:''}` );
-  renderDashboard();renderBanques();
+
+  let msg=`✅ Import terminé — ${updatedComptes} compte(s), ${updatedPDV} PDV mis à jour`;
+  if(errors.length)msg+=`\n⚠️ Non trouvés : ${errors.join(' | ')}`;
+  toast(msg);if(errors.length)alert(msg);
+  renderDashboard();renderBanques();populateSelects();
 }
 window.importSoldesExcel=importSoldesExcel;
 
@@ -438,17 +464,12 @@ function openImportSoldes(){
   const input=document.createElement('input');
   input.type='file';input.accept='.xlsx';
   input.onchange=e=>{
-    const f=e.target.files[0];
-    if(!f)return;
+    const f=e.target.files[0];if(!f)return;
     if(!window.XLSX){
-      // Charge SheetJS dynamiquement
       const s=document.createElement('script');
       s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      s.onload=()=>importSoldesExcel(f);
-      document.head.appendChild(s);
-    } else {
-      importSoldesExcel(f);
-    }
+      s.onload=()=>importSoldesExcel(f);document.head.appendChild(s);
+    } else importSoldesExcel(f);
   };
   input.click();
 }
