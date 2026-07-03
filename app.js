@@ -250,7 +250,7 @@ function weekBounds(d){
   const sun=new Date(mon);sun.setDate(mon.getDate()+6);
   return{start:mon.toISOString().split('T')[0],end:sun.toISOString().split('T')[0]};
 }
-const MM_LABEL={OM:'🟠 Orange Money',MTN:'🟡 MTN MoMo',WAVE:'🔵 Wave',MOOV:'🟢 Moov Money',CASH:'💵 Cash',CHEQUE:'📝 Chèque',VIREMENT:'🏦 Virement'};
+const MM_LABEL={OM:'🟠 Orange Money',MTN:'🟡 MTN MoMo',WAVE:'🔵 Wave',MOOV:'🟢 Moov Money',CASH:'💵 Cash',CHEQUE:'📝 Chèque',VIREMENT:'🏦 Virement',ESPECES_PDV:'💵 Espèces (caisse PDV)',BANQUE_PDV:'🏦 Virement banque locale PDV'};
 const OP_ICONS={OM:'🟠',MTN:'🟡',WAVE:'🔵',MOOV:'🟢',BICICI:'🏦',SGBCI:'🏦',ECOBANK:'🏦',UBA:'🏦',BNI:'🏦',NSIA:'🏦',SIB:'🏦',CORIS:'🏦',BOA:'🏦',CASH:'💵',AUTRE:'💳'};
 const FREQ_LABEL={quotidien:'Quotidien',bihebdomadaire:'2×/semaine',hebdomadaire:'Hebdo',bimensuel:'Bimensuel',mensuel:'Mensuel'};
 const JOURS_NOM=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
@@ -897,18 +897,33 @@ window.updateLigneCompte=updateLigneCompte;
 function renderLignesVersement(){
   const container=document.getElementById('lignesVersContainer');
   if(!container)return;
-  container.innerHTML=lignesVersement.map((l,i)=>`
+  const pdvId=document.getElementById('mVPDV2')?.value;
+  const pdvCurrent=pdvs.find(p=>p.id===pdvId);
+  container.innerHTML=lignesVersement.map((l,i)=>{
+    const isEspPDV=l.type==='ESPECES_PDV';
+    const isBqPDV=l.type==='BANQUE_PDV';
+    const infoPDV=isEspPDV&&pdvCurrent?.caisseLocaleNom
+      ?`<div style="font-size:.72rem;color:var(--amber);margin-top:4px">📍 Caisse locale : <b>${pdvCurrent.caisseLocaleNom}</b>${pdvCurrent.caisseLocaleSolde?` — Solde : ${fmt(pdvCurrent.caisseLocaleSolde)} FCFA`:''}</div>`
+      :isBqPDV&&pdvCurrent?.banqueLocaleNom
+      ?`<div style="font-size:.72rem;color:var(--cyan);margin-top:4px">🏦 Banque locale : <b>${pdvCurrent.banqueLocaleNom}</b>${pdvCurrent.banqueLocaleNum?` — ${pdvCurrent.banqueLocaleNum}`:''}</div>`:'';
+    return`
     <div style="background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:8px;position:relative">
       <div style="font-size:.72rem;color:var(--text3);margin-bottom:8px">Versement ${i+1}</div>
       <div class="fg2">
         <div class="fg"><label>Type *</label>
-          <select onchange="updateLigneType(${i},this.value)">
+          <select onchange="updateLigneType(${i},this.value);renderLignesVersement()">
             ${Object.entries(MM_LABEL).map(([k,v])=>`<option value="${k}"${l.type===k?' selected':''}>${v}</option>`).join('')}
           </select>
+          ${infoPDV}
         </div>
-        <div class="fg"><label>Vers compte *</label>
+        <div class="fg"><label>${isEspPDV?'Vers caisse centrale':isBqPDV?'Vers banque centrale':'Vers compte'} *</label>
           <select onchange="updateLigneCompte(${i},this.value)">
-            ${comptes.filter(c=>c.actif!==false).map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
+            ${(isEspPDV
+              ?comptes.filter(c=>c.cat==='caisse'&&c.actif!==false)
+              :isBqPDV
+              ?comptes.filter(c=>c.cat==='banque'&&c.actif!==false)
+              :comptes.filter(c=>c.actif!==false)
+            ).map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -919,13 +934,13 @@ function renderLignesVersement(){
             onchange="updateLigneMontant(${i},this.value)">
         </div>
         <div class="fg"><label>Référence</label>
-          <input type="text" value="${l.ref||''}" placeholder="N° reçu, réf MM…"
+          <input type="text" value="${l.ref||''}" placeholder="${isEspPDV?'N° reçu espèces…':isBqPDV?'N° virement / bordereau…':'N° reçu, réf MM…'}"
             oninput="updateLigneRef(${i},this.value)">
         </div>
       </div>
       ${lignesVersement.length>1?`<button onclick="removeLigneVersement(${i})" style="position:absolute;top:8px;right:8px;background:var(--red-dim);color:var(--red);border:none;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:.75rem">✕</button>`:''}
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
   updateTotalVers();
 }
 function addLigneVersement(){
@@ -1812,14 +1827,42 @@ function renderAdminMMTetes(){
 window.renderAdminMMTetes=renderAdminMMTetes;
 
 function renderAdminMMPDV(){
-  document.getElementById('mmPDVTbody').innerHTML=pdvs.map(p=>`<tr>
-    <td><b>${p.nom}</b><br><span class="badge ${p.type==='principale'?'bg':'bb'}" style="font-size:.6rem">${p.type}</span></td>
-    <td style="font-family:monospace;font-size:.78rem">${p.numOM||'—'}</td>
-    <td style="font-family:monospace;font-size:.78rem">${p.numMTN||'—'}</td>
-    <td style="font-family:monospace;font-size:.78rem">${p.numWave||'—'}</td>
-    <td style="font-family:monospace;font-size:.78rem">${p.numMoov||'—'}</td>
-    <td><button class="btn btn-ghost btn-xs" onclick="editPDV('${p.id}')">✏️</button></td>
-  </tr>`).join('');
+  document.getElementById('mmPDVTbody').innerHTML=pdvs.map(p=>{
+    const soldeOM=p.soldeOM||0,soldeMTN=p.soldeMTN||0,soldeWave=p.soldeWave||0,soldeMoov=p.soldeMoov||0;
+    const totalMM=soldeOM+soldeMTN+soldeWave+soldeMoov;
+    const caisseLocale=p.caisseLocaleNom?`💵 ${p.caisseLocaleNom}${p.caisseLocaleSolde?` — <b style="color:var(--amber)">${fmt(p.caisseLocaleSolde)} FCFA</b>`:''}`:'-';
+    const banqueLocale=p.banqueLocaleNom?`🏦 ${p.banqueLocaleNom}${p.banqueLocaleNum?`<br><span style="font-family:monospace;font-size:.7rem;color:var(--text3)">${p.banqueLocaleNum}</span>`:''}`:'-';
+    return`<tr>
+      <td><b>${p.nom}</b><br><span class="badge ${p.type==='principale'?'bg':'bb'}" style="font-size:.6rem">${p.type}</span></td>
+      <td style="font-size:.78rem">
+        ${p.numOM?`<div style="font-family:monospace;color:var(--text2)">${p.numOM}</div>`:'—'}
+        ${soldeOM?`<div style="color:var(--amber);font-weight:700">${fmt(soldeOM)} FCFA</div>`:''}
+      </td>
+      <td style="font-size:.78rem">
+        ${p.numMTN?`<div style="font-family:monospace;color:var(--text2)">${p.numMTN}</div>`:'—'}
+        ${soldeMTN?`<div style="color:var(--amber);font-weight:700">${fmt(soldeMTN)} FCFA</div>`:''}
+      </td>
+      <td style="font-size:.78rem">
+        ${p.numWave?`<div style="font-family:monospace;color:var(--text2)">${p.numWave}</div>`:'—'}
+        ${soldeWave?`<div style="color:var(--cyan);font-weight:700">${fmt(soldeWave)} FCFA</div>`:''}
+      </td>
+      <td style="font-size:.78rem">
+        ${p.numMoov?`<div style="font-family:monospace;color:var(--text2)">${p.numMoov}</div>`:'—'}
+        ${soldeMoov?`<div style="color:var(--green);font-weight:700">${fmt(soldeMoov)} FCFA</div>`:''}
+      </td>
+      <td style="font-weight:700;color:${totalMM>0?'var(--amber)':'var(--text3)'}">${totalMM>0?fmt(totalMM)+' FCFA':'—'}</td>
+      <td style="font-size:.75rem">${caisseLocale}</td>
+      <td style="font-size:.75rem">${banqueLocale}</td>
+      <td><button class="btn btn-ghost btn-xs" onclick="editPDV('${p.id}')">✏️</button></td>
+    </tr>`;
+  }).join('');
+  const totalGeneral=pdvs.reduce((s,p)=>(s+(p.soldeOM||0)+(p.soldeMTN||0)+(p.soldeWave||0)+(p.soldeMoov||0)),0);
+  const tfootEl=document.getElementById('mmPDVTfoot');
+  if(tfootEl)tfootEl.innerHTML=`<tr style="background:var(--surface2);font-weight:700">
+    <td colspan="5">TOTAL MM EN CIRCULATION (PDV)</td>
+    <td style="color:var(--amber);font-size:1rem">${fmt(totalGeneral)} FCFA</td>
+    <td colspan="3"></td>
+  </tr>`;
 }
 window.renderAdminMMPDV=renderAdminMMPDV;
 
@@ -1885,6 +1928,10 @@ function openPDVModal(id){
   document.getElementById('mPDVCompte').value=p.compteDefaut||'';
   document.getElementById('mPDVBanque').value=p.banqueDirecte||'';
   document.getElementById('mPDVCaisse').value=p.caisseDirecte||'';
+  document.getElementById('mPDVCaisseLocaleNom').value=p.caisseLocaleNom||'';
+  document.getElementById('mPDVCaisseLocaleSolde').value=p.caisseLocaleSolde||0;
+  document.getElementById('mPDVBanqueLocaleNom').value=p.banqueLocaleNom||'';
+  document.getElementById('mPDVBanqueLocaleNum').value=p.banqueLocaleNum||'';
   document.getElementById('mPDVJourMois').value=p.jourMois||'';
   document.getElementById('mPDVNotes').value=p.notes||'';
   document.getElementById('mPDVNumOM').value=p.numOM||'';
@@ -1915,7 +1962,11 @@ async function savePDV(){
     numWave:document.getElementById('mPDVNumWave').value.trim(),
     numMoov:document.getElementById('mPDVNumMoov').value.trim(),
     banqueDirecte:document.getElementById('mPDVBanque').value,
-    caisseDirecte:document.getElementById('mPDVCaisse').value};
+    caisseDirecte:document.getElementById('mPDVCaisse').value,
+    caisseLocaleNom:document.getElementById('mPDVCaisseLocaleNom').value.trim(),
+    caisseLocaleSolde:parseFloat(document.getElementById('mPDVCaisseLocaleSolde').value)||0,
+    banqueLocaleNom:document.getElementById('mPDVBanqueLocaleNom').value.trim(),
+    banqueLocaleNum:document.getElementById('mPDVBanqueLocaleNum').value.trim()};
   if(id){Object.assign(pdvs.find(p=>p.id===id),data);await saveItem('pdvs',pdvs.find(p=>p.id===id));}
   else{data.id=uid();pdvs.push(data);await saveItem('pdvs',data);}
   populateSelects();closeM('mPDV');renderAdmin();toast('PDV enregistré ✓');
