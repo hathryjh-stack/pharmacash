@@ -328,7 +328,7 @@ function goTo(name){
   document.querySelectorAll('.mnav-item').forEach((n,i)=>n.classList.toggle('active',mm[i]===name));
   ({dashboard:renderDashboard,recettes:renderRecettes,versements:renderVersements,
     caisse:renderCaisse,banques:renderBanques,rapport:renderRapport,
-    releves:renderReleves,petitecaisse:renderPetiteCaisse,
+    releves:renderReleves,petitecaisse:renderPetiteCaisse,caisseprinc:renderCaisseP,
     caissiere:renderSuiviCaissiere,admin:renderAdmin,utilisateurs:renderUsers})[name]?.();
 }
 window.goTo=goTo;
@@ -1599,7 +1599,75 @@ function nombreEnLettres(n){
 window.nombreEnLettres=nombreEnLettres;
 
 // ══════════════════════════════════════════════════════
-// CLÔTURE PETITE CAISSE (v4.1)
+// CAISSE PRINCIPALE (v4.1)
+// ══════════════════════════════════════════════════════
+function getCaisseP(){
+  return comptes.find(c=>c.cat==='caisse'&&!c.nom.toLowerCase().includes('petite'));
+}
+function renderCaisseP(){
+  const cp=getCaisseP();
+  const solde=cp?.solde||0;
+  const cpSolde=document.getElementById('cpSolde');
+  if(cpSolde){cpSolde.textContent=fmt(solde)+' '+DEVISE;cpSolde.style.color=solde>=0?'var(--green)':'var(--red)';}
+  const tbody=document.getElementById('cpTbody');
+  if(!tbody)return;
+  const data=mvts.filter(m=>m.compte===cp?.id).sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+  if(!data.length){tbody.innerHTML='<tr><td colspan="10"><div class="empty-state"><div class="ei">🏛️</div>Aucun mouvement caisse principale</div></td></tr>';return;}
+  tbody.innerHTML=data.map(m=>`<tr>
+    <td>${fmtD(m.date)}</td>
+    <td><span class="badge ${m.type==='entrée'?'bg':'br'}">${m.type==='entrée'?'↑ Entrée':'↓ Sortie'}</span></td>
+    <td style="font-size:.78rem;color:var(--text2)">${m.rubrique||'—'}</td>
+    <td style="font-size:.82rem">${m.libelle||'—'}</td>
+    <td style="font-size:.78rem">${m.benef_nom||'—'}</td>
+    <td style="font-size:.72rem;font-family:monospace;color:var(--text3)">${m.ref||'—'}</td>
+    <td class="amt ${m.type==='entrée'?'pos':'neg'}">${m.type==='entrée'?'+':'-'}${fmt(m.montant)}</td>
+    <td class="amt">${fmt(m.soldeApres||0)}</td>
+    <td style="font-size:.75rem;color:var(--text2)">${m.saisie||'—'}</td>
+    <td><button class="btn btn-red btn-xs" onclick="delCPMvt('${m.id}')">✕</button></td>
+  </tr>`).join('');
+}
+window.renderCaisseP=renderCaisseP;
+
+function openCPModal(type){
+  const cp=getCaisseP();
+  if(!cp){toast('Caisse Principale introuvable','err');return;}
+  document.getElementById('mMDate').value=today();
+  document.getElementById('mMCompte').value=cp.id;
+  document.getElementById('mMType').value=type==='entree'?'entrée':'sortie';
+  document.getElementById('mMRubrique').innerHTML=getRubriquesOptions();
+  ['mMMontant','mMRef','mMNotes','mMBenefNom','mMBenefCNI','mMBenefTel','mMResponsable'].forEach(id=>{
+    const e=document.getElementById(id);if(e)e.value='';
+  });
+  document.getElementById('mMBenefType').value='Particulier';
+  document.getElementById('mMSaisie').value=currentUser.nom;
+  openM('mMvt');
+}
+window.openCPModal=openCPModal;
+
+async function delCPMvt(id){
+  if(!confirm('Supprimer ce mouvement ?'))return;
+  const m=mvts.find(x=>x.id===id);if(!m)return;
+  const c=comptes.find(x=>x.id===m.compte);
+  if(c){
+    c.solde=(c.solde||0)+(m.type==='entrée'?-m.montant:m.montant);
+    await saveItem('comptes',c);
+  }
+  mvts=mvts.filter(x=>x.id!==id);
+  await delItem('mvts',id);
+  renderCaisseP();renderDashboard();
+  toast('Mouvement supprimé ✓');
+}
+window.delCPMvt=delCPMvt;
+
+function exportCaisseP(format){
+  const cp=getCaisseP();
+  const data=mvts.filter(m=>m.compte===cp?.id).sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+  exportUniversel('Caisse Principale — Mouvements',
+    ['Date','Type','Rubrique','Libellé','Bénéficiaire','Référence','Montant (FCFA)','Solde après','Saisi par'],
+    data.map(m=>[fmtD(m.date),m.type==='entrée'?'Entrée':'Sortie',m.rubrique||'—',m.libelle||'—',m.benef_nom||'—',m.ref||'—',(m.type==='entrée'?'+':'-')+fmt(m.montant),fmt(m.soldeApres||0),m.saisie||'—']),
+    {format});
+}
+window.exportCaisseP=exportCaisseP;
 // ══════════════════════════════════════════════════════
 function ouvrirCloturePetiteCaisse(){
   const totAppro=petiteCaisse.filter(m=>m.type==='appro').reduce((s,m)=>s+(m.montant||0),0);
