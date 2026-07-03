@@ -421,10 +421,23 @@ async function importSoldesExcel(file){
         if(!id.startsWith('CPT_'))continue;
         const c=comptes.find(x=>{
           const n=x.nom.toLowerCase().trim();
-          return n===nomFichier||
-            (nomFichier.includes('caisse esp')&&(n.includes('caisse principale')||n==='caisse espèces'));
+          // Matching par ID prioritaire
+          if(id==='CPT_CAISSE')   return x.cat==='caisse'&&!n.includes('petite');
+          if(id==='CPT_PETCAIS')  return n.includes('petite');
+          if(id==='CPT_BICICI')   return n.includes('bicici');
+          if(id==='CPT_FINLIV')   return n.includes('finafrica')&&n.includes('livret');
+          if(id==='CPT_FINDEP')   return n.includes('finafrica')&&(n.includes('depot')||n.includes('dépôt'));
+          if(id==='CPT_BNI')      return x.op==='BNI'||n==='bni';
+          if(id==='CPT_OBANK')    return n.includes('orange bank')||x.op==='ORANGE BANK';
+          if(id==='CPT_BOA')      return x.op==='BOA'||n==='boa';
+          if(id==='CPT_BDTRES')   return n.includes('bdtresor')||x.op==='BDTRESOR';
+          if(id==='CPT_OM_CENT')  return x.cat==='mobile_money'&&x.op==='OM'&&(n.includes('centra')||n.includes('centrale'));
+          if(id==='CPT_MTN_CENT') return x.cat==='mobile_money'&&x.op==='MTN'&&n.includes('centra');
+          if(id==='CPT_WAVE_CENT')return x.cat==='mobile_money'&&x.op==='WAVE'&&n.includes('centra');
+          // Fallback nom
+          return n===nomFichier;
         });
-        if(!c){errors.push(`Compte : ${row[1]}`);continue;}
+        if(!c){errors.push(`Compte : ${row[1]} (${id})`);continue;}
         c.solde=solde;c.soldeInit=soldeInit;
         await saveItem('comptes',c);updatedComptes++;
       }
