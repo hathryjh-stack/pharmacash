@@ -111,6 +111,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <div class="nav-item" onclick="goTo('versements')"><span class="nav-icon">💸</span> Versements</div>
       <div class="nav-item" onclick="goTo('caisse')"><span class="nav-icon">🗂️</span> Clôture de caisse</div>
       <div class="nav-item" onclick="goTo('banques')"><span class="nav-icon">🏦</span> Banques & MM</div>
+      <div class="nav-item" onclick="goTo('caisseprinc')"><span class="nav-icon">🏛️</span> Caisse Principale</div>
       <div class="nav-item" onclick="goTo('petitecaisse')"><span class="nav-icon">💰</span> Petite caisse</div>
       <div class="nav-sec">Analyse</div>
       <div class="nav-item" onclick="goTo('rapport')"><span class="nav-icon">📈</span> Rapport</div>
@@ -212,6 +213,26 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           </div></div>
         <div id="rapportContent"></div>
       </div>
+      <!-- CAISSE PRINCIPALE -->
+      <div class="pg" id="pg-caisseprinc">
+        <div class="pg-header">
+          <div><div class="pg-title">🏛️ Caisse Principale</div><div class="pg-sub">Entrées et sorties de la grande caisse espèces</div></div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <div style="font-size:.85rem;color:var(--text2)">Solde : <b id="cpSolde" style="color:var(--green)">0 FCFA</b></div>
+            <div style="display:flex;gap:3px">
+              <button class="btn btn-ghost btn-xs" onclick="exportCaisseP('print')" title="Imprimer">🖨️</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportCaisseP('excel')" title="Excel">📊</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportCaisseP('word')" title="Word">📝</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportCaisseP('pdf')" title="PDF">📄</button>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻</button>
+            <button class="btn btn-blue btn-sm" onclick="openCPModal('entree')">↑ Entrée</button>
+            <button class="btn btn-red btn-sm" onclick="openCPModal('sortie')">↓ Sortie</button>
+          </div>
+        </div>
+        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Rubrique</th><th>Libellé</th><th>Bénéficiaire</th><th>Référence</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="cpTbody"></tbody></table></div></div>
+      </div>
+
       <!-- PETITE CAISSE -->
       <div class="pg" id="pg-petitecaisse">
         <div class="pg-header">
@@ -560,7 +581,12 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
   </div>
   <div id="pcResponsableRow" class="fg" style="display:flex"><label>Responsable dépense</label><input type="text" id="pcResponsable" placeholder="Nom du responsable…"></div>
   <div id="pcCaisseSource" style="display:none">
-    <div class="fg"><label>Débiter depuis *</label><select id="pcCaisseId"></select></div>
+    <div class="fg"><label>Source de l'approvisionnement</label>
+      <select id="pcCaisseId">
+        <option value="">— Report / Solde antérieur (sans débit) —</option>
+      </select>
+      <div style="font-size:.72rem;color:var(--text3);margin-top:4px">Laisser vide si c'est un report de solde ou une régularisation comptable</div>
+    </div>
   </div>
   <div style="background:var(--surface2);border-radius:8px;padding:10px;margin:8px 0" id="pcBenefSection">
     <div style="font-size:.75rem;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:8px">Bénéficiaire</div>
