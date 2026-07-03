@@ -2168,9 +2168,24 @@ function renderPetiteCaisse(){
     <td class="amt">${fmt(m.soldeApres)}</td>
     <td style="font-size:.68rem;color:var(--text3);font-family:monospace">${m.ref||'—'}</td>
     <td style="font-size:.75rem;color:var(--text2)">${m.saisie||'—'}</td>
+    <td><button class="btn btn-red btn-xs" onclick="delPCMvt('${m.id}')" title="Supprimer">✕</button></td>
   </tr>`).join('');
 }
-window.renderPetiteCaisse=renderPetiteCaisse;
+async function delPCMvt(id){
+  if(!confirm('Supprimer ce mouvement petite caisse ?'))return;
+  const m=petiteCaisse.find(x=>x.id===id);
+  if(!m)return;
+  // Si appro avec compte débité — recrédite le compte source
+  if(m.type==='appro'&&m.caisseSource){
+    const c=comptes.find(x=>x.id===m.caisseSource);
+    if(c){c.solde=(c.solde||0)+m.montant;await saveItem('comptes',c);}
+  }
+  petiteCaisse=petiteCaisse.filter(x=>x.id!==id);
+  await delItem('petiteCaisse',id);
+  renderPetiteCaisse();renderDashboard();
+  toast('Mouvement supprimé ✓');
+}
+window.delPCMvt=delPCMvt;
 
 function openPCModal(type){
   document.getElementById('pcMType').value=type;
@@ -2194,7 +2209,8 @@ function openPCModal(type){
   document.getElementById('pcCategorieRow').style.display=type==='appro'?'none':'flex';
   const caisseId=document.getElementById('pcCaisseId');
   if(type==='appro'&&caisseId){
-    caisseId.innerHTML=comptes.filter(c=>c.actif!==false)
+    caisseId.innerHTML='<option value="">— Report / Solde antérieur (sans débit) —</option>'+
+      comptes.filter(c=>c.actif!==false)
       .map(c=>`<option value="${c.id}">${c.nom} — ${fmt(c.solde||0)} ${DEVISE}</option>`).join('');
   }
   openM('mPetiteCaisse');
@@ -2258,10 +2274,11 @@ async function savePCMouvement(){
         }
       }
     }
+    const caisseSourceId=document.getElementById('pcCaisseId')?.value||'';
     const item={id:uid(),date,heure:`${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`,
       type,libelle,ref:refAuto,
       categorie:document.getElementById('pcMCategorie').value,
-      modePaiement,responsable,
+      modePaiement,responsable,caisseSource:caisseSourceId,
       benef_nom,benef_type,benef_cni,benef_tel,
       montant,saisie:currentUser.nom,notes:'',ts:Date.now()};
     petiteCaisse.push(item);await saveItem('petiteCaisse',item);
