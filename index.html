@@ -129,7 +129,13 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
     <main class="app-main">
       <!-- DASHBOARD -->
       <div class="pg active" id="pg-dashboard">
-        <div class="pg-header"><div><div class="pg-title">Tableau de bord</div><div class="pg-sub" id="dbSub"></div></div><button class="btn btn-ghost btn-sm" onclick="renderDashboard()">↻</button></div>
+        <div class="pg-header"><div><div class="pg-title">Tableau de bord</div><div class="pg-sub" id="dbSub"></div></div>
+          <div style="display:flex;gap:6px">
+            <button class="btn btn-ghost btn-xs" onclick="imprimerDashboard()" title="Imprimer">🖨️</button>
+            <button class="btn btn-ghost btn-xs" onclick="exportDashboard('excel')" title="Excel">📊</button>
+            <button class="btn btn-ghost btn-sm" onclick="renderDashboard()">↻</button>
+          </div>
+        </div>
         <div class="backup-bar"><span>💾 Dernière sauvegarde : <b id="lastBackupLabel">—</b></span><button class="btn btn-ghost btn-sm" onclick="backupNow()">Sauvegarder maintenant</button></div>
         <div class="stats-grid" id="dbStats"></div>
         <div class="card"><div class="card-header"><span class="card-title">Soldes par établissement — ✓ Disponible / ⏳ En transit</span></div><div class="compte-cards" id="dbComptes"></div></div>
