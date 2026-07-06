@@ -86,6 +86,7 @@ let mvts       = LS.g('mvts')       || [];
 let clotures   = LS.g('clotures')   || [];
 let transferts = LS.g('transferts') || []; // NEW v4 — transferts MM→Banque
 let petiteCaisse = LS.g('petiteCaisse') || []; // NEW v4.1 — petite caisse
+let rapportsNouveaux = LS.g('rapportsNouveaux') || []; // v4.2 — Reports à Nouveaux (RAN)
 let currentUser = null;
 let backupTimer = null;
 
@@ -109,14 +110,14 @@ async function fbDel(col,id){
 }
 async function loadAll(){
   sync('syncing','Chargement…');
-  const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc]=await Promise.all([
+  const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc,fran]=await Promise.all([
     fbLoad('users'),fbLoad('pdvs'),fbLoad('comptes'),fbLoad('recettes'),
     fbLoad('versements'),fbLoad('mvts'),fbLoad('clotures'),fbLoad('transferts'),
-    fbLoad('petiteCaisse')
+    fbLoad('petiteCaisse'),fbLoad('rapportsNouveaux')
   ]);
   if(fu)users=fu; if(fp)pdvs=fp; if(fc)comptes=fc; if(fr)recettes=fr;
   if(fv)versements=fv; if(fm)mvts=fm; if(fcl)clotures=fcl; if(ft)transferts=ft;
-  if(fpc)petiteCaisse=fpc;
+  if(fpc)petiteCaisse=fpc; if(fran)rapportsNouveaux=fran;
   saveLocal(); sync('ok','🔴 Temps réel');
 }
 function subscribeAll(){
@@ -141,6 +142,7 @@ function saveLocal(){
   LS.s('users',users);LS.s('pdvs',pdvs);LS.s('comptes',comptes);
   LS.s('recettes',recettes);LS.s('versements',versements);LS.s('mvts',mvts);
   LS.s('clotures',clotures);LS.s('transferts',transferts);LS.s('petiteCaisse',petiteCaisse);
+  LS.s('rapportsNouveaux',rapportsNouveaux);
 }
 async function saveItem(col,item){ saveLocal(); if(useFirebase){sync('syncing','Sync…');await fbSave(col,item.id,item);sync('ok','🔴 Temps réel');} }
 async function delItem(col,id){ saveLocal(); if(useFirebase){await fbDel(col,id);} }
@@ -223,6 +225,7 @@ function importerDonnees(e){
 // UTILS
 // ══════════════════════════════════════════════════════
 const fmt=n=>new Intl.NumberFormat('fr-FR').format(Math.round(n||0));
+const rowNum=i=>`<td style="color:var(--text3);font-size:.68rem;font-weight:600;min-width:24px;text-align:right;padding-right:8px;user-select:none">${i+1}</td>`;
 const today=()=>new Date().toISOString().split('T')[0];
 const nowTm=()=>new Date().toTimeString().slice(0,5);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
@@ -310,7 +313,7 @@ function startApp(){
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','petitecaisse','caissiere','admin','utilisateurs'];
+const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','petitecaisse','caissiere','ran','admin','utilisateurs'];
 function goTo(name){
   PAGES.forEach(p=>document.getElementById('pg-'+p)?.classList.remove('active'));
   document.getElementById('pg-'+name)?.classList.add('active');
@@ -321,7 +324,7 @@ function goTo(name){
       (name==='versements'&&t.includes('versement'))||(name==='caisse'&&t.includes('clôture'))||
       (name==='banques'&&t.includes('banques'))||(name==='rapport'&&t.includes('rapport'))||
       (name==='releves'&&t.includes('relevé'))||(name==='petitecaisse'&&t.includes('petite'))||
-      (name==='caissiere'&&t.includes('caissière'))||(name==='admin'&&t.includes('config'))||
+      (name==='caissiere'&&t.includes('caissière'))||(name==='ran'&&t.includes('nouveaux'))||(name==='admin'&&t.includes('config'))||
       (name==='utilisateurs'&&t.includes('utilis')));
   });
   const mm=['dashboard','recettes','versements','caisse','banques'];
@@ -329,7 +332,7 @@ function goTo(name){
   ({dashboard:renderDashboard,recettes:renderRecettes,versements:renderVersements,
     caisse:renderCaisse,banques:renderBanques,rapport:renderRapport,
     releves:renderReleves,petitecaisse:renderPetiteCaisse,caisseprinc:renderCaisseP,
-    caissiere:renderSuiviCaissiere,admin:renderAdmin,utilisateurs:renderUsers})[name]?.();
+    caissiere:renderSuiviCaissiere,ran:renderRAN,admin:renderAdmin,utilisateurs:renderUsers})[name]?.();
 }
 window.goTo=goTo;
 
@@ -354,6 +357,12 @@ function populateSelects(){
   const tDst=document.getElementById('tDstCompte');if(tDst)tDst.innerHTML=bqO;
   // Versements multiples PDV
   const vPDV2=document.getElementById('mVPDV2');if(vPDV2)vPDV2.innerHTML=pdvO;
+  // RAN — filtre PDV
+  const ranPDV=document.getElementById('ranPDVFil');
+  if(ranPDV)ranPDV.innerHTML='<option value="">Tous les PDV / Centrale</option>'+pdvO;
+  // RAN — sélecteur mois (défaut = mois courant)
+  const ranPer=document.getElementById('ranPeriode');
+  if(ranPer&&!ranPer.value)ranPer.value=today().slice(0,7);
 }
 
 // ══════════════════════════════════════════════════════
@@ -677,7 +686,8 @@ function renderRecettes(){
   if(dF)data=data.filter(r=>r.date===dF);if(pF)data=data.filter(r=>r.pdv===pF);if(cF)data=data.filter(r=>r.canal===cF);
   const tbody=document.getElementById('recTbody');
   if(!data.length){tbody.innerHTML='<tr><td colspan="8"><div class="empty-state"><div class="ei">📋</div>Aucune recette</div></td></tr>';return;}
-  tbody.innerHTML=data.map(r=>`<tr>
+  tbody.innerHTML=data.map((r,i)=>`<tr>
+    ${rowNum(i)}
     <td>${fmtD(r.date)}</td><td>${pdvBadge(r.pdv)}</td><td>${mmBadge(r.canal)}</td>
     <td><span class="badge bb">${r.type}</span></td>
     <td class="amt pos">${fmt(r.montant)}</td>
@@ -798,9 +808,10 @@ function renderVersements(){
   if(tF)data=data.filter(v=>v.type===tF);if(sF)data=data.filter(v=>v.statut===sF);
   const tbody=document.getElementById('verTbody');
   if(!data.length){tbody.innerHTML='<tr><td colspan="10"><div class="empty-state"><div class="ei">💸</div>Aucun versement</div></td></tr>';return;}
-  tbody.innerHTML=data.map(v=>{
+  tbody.innerHTML=data.map((v,i)=>{
     const cpt=comptes.find(c=>c.id===v.compte);
     return`<tr>
+      ${rowNum(i)}
       <td>${fmtD(v.date)}</td><td>${pdvBadge(v.pdv)}</td>
       <td><span class="wk">${v.freq||'quotidien'}</span></td>
       <td>${mmBadge(v.type)}</td>
@@ -1202,9 +1213,9 @@ function renderCaisse(){
       ${currentUser.role==='admin'?`<button class="btn btn-red btn-xs" onclick="delClot('${c.id}')">✕</button>`:''}
     </div></div>`;
   }).join('');
-  document.getElementById('caisseTbody').innerHTML=dayC.map(c=>{
+  document.getElementById('caisseTbody').innerHTML=dayC.map((c,i)=>{
     const ec=c.ecart||0,ecC=ec===0?'amt pos':ec<0?'amt neg':'amt neu';
-    return`<tr><td><span class="wk">${c.vacation}</span></td><td><b>${c.caissiere}</b></td>
+    return`<tr><td style="color:var(--text3);font-size:.68rem;font-weight:600;text-align:right;padding-right:8px">${i+1}</td><td><span class="wk">${c.vacation}</span></td><td><b>${c.caissiere}</b></td>
     <td class="amt" style="color:var(--blue)">${fmt(c.totalMachine)}</td>
     <td class="amt ${c.cashVerse>0?'pos':''}">${fmt(c.cashVerse)}</td>
     <td class="amt pos">${fmt((c.omVerse||0)+(c.mtnVerse||0)+(c.waveVerse||0)+(c.moovVerse||0))}</td>
@@ -1291,11 +1302,12 @@ function renderMvts(){
   if(dF)data=data.filter(m=>m.date===dF);if(cF)data=data.filter(m=>m.compte===cF||m.compteSrc===cF||m.compteDst===cF);if(tF)data=data.filter(m=>m.type===tF);
   const tbody=document.getElementById('mvtTbody');
   if(!data.length){tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><div class="ei">🏦</div>Aucun mouvement</div></td></tr>';return;}
-  tbody.innerHTML=data.map(m=>{
+  tbody.innerHTML=data.map((m,i)=>{
     const cpt=comptes.find(c=>c.id===(m.compte||m.compteSrc));
     const cptDst=m.compteDst?comptes.find(c=>c.id===m.compteDst):null;
     const libelle=m._src==='transfert'?`🔄 Transfert MM→Banque${cptDst?' → '+cptDst.nom:''}`:m.libelle||'—';
     return`<tr>
+      ${rowNum(i)}
       <td>${fmtD(m.date)}</td>
       <td style="font-size:.78rem">${cpt?cpt.nom:m.compte||'—'}</td>
       <td><span class="badge ${m.type==='entrée'?'bg':m.type==='sortie'?'br':'bc'}">${m.type}</span></td>
@@ -1613,7 +1625,8 @@ function renderCaisseP(){
   if(!tbody)return;
   const data=mvts.filter(m=>m.compte===cp?.id).sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
   if(!data.length){tbody.innerHTML='<tr><td colspan="10"><div class="empty-state"><div class="ei">🏛️</div>Aucun mouvement caisse principale</div></td></tr>';return;}
-  tbody.innerHTML=data.map(m=>`<tr>
+  tbody.innerHTML=data.map((m,i)=>`<tr>
+    ${rowNum(i)}
     <td>${fmtD(m.date)}</td>
     <td><span class="badge ${m.type==='entrée'?'bg':'br'}">${m.type==='entrée'?'↑ Entrée':'↓ Sortie'}</span></td>
     <td style="font-size:.78rem;color:var(--text2)">${m.rubrique||'—'}</td>
@@ -2227,7 +2240,8 @@ function renderPetiteCaisse(){
     running+=m.type==='appro'?m.montant:-(m.montant||0);
     return{...m,soldeApres:running};
   }).reverse();
-  tbody.innerHTML=rows.map(m=>`<tr>
+  tbody.innerHTML=rows.map((m,i)=>`<tr>
+    ${rowNum(i)}
     <td>${fmtD(m.date)} ${m.heure||''}</td>
     <td><span class="badge ${m.type==='appro'?'bg':'br'}">${m.type==='appro'?'Approvisionnement':'Dépense'}</span></td>
     <td style="font-size:.82rem">${m.libelle||'—'}</td>
@@ -2277,8 +2291,10 @@ function openPCModal(type){
   document.getElementById('pcCategorieRow').style.display=type==='appro'?'none':'flex';
   const caisseId=document.getElementById('pcCaisseId');
   if(type==='appro'&&caisseId){
+    // ── Exclure les comptes Mobile Money — un appro PC vient toujours d'espèces ou d'une banque ──
+    const comptesDisponibles=comptes.filter(c=>c.actif!==false&&c.cat!=='mobile_money');
     caisseId.innerHTML='<option value="">— Report / Solde antérieur (sans débit) —</option>'+
-      comptes.filter(c=>c.actif!==false)
+      comptesDisponibles
       .map(c=>`<option value="${c.id}">${c.nom} — ${fmt(c.solde||0)} ${DEVISE}</option>`).join('');
   }
   openM('mPetiteCaisse');
@@ -2333,6 +2349,16 @@ async function savePCMouvement(){
       if(caisseEl&&caisseEl.value){
         const c=comptes.find(x=>x.id===caisseEl.value);
         if(c){
+          // ── GARDE-FOU 1 : interdit de débiter un compte Mobile Money ──
+          if(c.cat==='mobile_money'){
+            toast(`❌ Impossible d'approvisionner la Petite Caisse depuis un compte Mobile Money (${c.nom}). Utilise un compte Banque ou Caisse espèces.`,'err');
+            _pcSaving=false;return;
+          }
+          // ── GARDE-FOU 2 : interdit de mettre le compte source en négatif ──
+          if((c.solde||0) < montant){
+            toast(`❌ Solde insuffisant sur "${c.nom}" — Disponible : ${fmt(c.solde||0)} ${DEVISE}, demandé : ${fmt(montant)} ${DEVISE}`,'err');
+            _pcSaving=false;return;
+          }
           c.solde=(c.solde||0)-montant;
           await saveItem('comptes',c);
           const m={id:uid(),date,compte:c.id,type:'sortie',
@@ -2400,9 +2426,10 @@ function renderSuiviCaissiere(){
   if(!tbody)return;
   const data=Object.values(byCaissiere).sort((a,b)=>b.totalVerse-a.totalVerse);
   if(!data.length){tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="ei">👤</div>Aucune donnée pour cette période</div></td></tr>';return;}
-  tbody.innerHTML=data.map(c=>{
+  tbody.innerHTML=data.map((c,i)=>{
     const ecC=c.ecart===0?'amt pos':c.ecart<0?'amt neg':'amt neu';
     return`<tr>
+      ${rowNum(i)}
       <td><b>${c.nom}</b></td>
       <td class="amt" style="color:var(--blue)">${fmt(c.totalMachine)}</td>
       <td class="amt pos">${fmt(c.cashVerse)}</td>
@@ -2897,6 +2924,351 @@ async function importerExcel(e){
 }
 window.importerExcel=importerExcel;
 
+// ══════════════════════════════════════════════════════
+// MODULE RAN v4.2 — Reports à Nouveaux & Contrôle a Posteriori
+// ══════════════════════════════════════════════════════
+
+// ── Obtenir le RAN actif pour un compte et une période ─
+function getRAN(compteId, periode) {
+  // periode = "YYYY-MM" (ex: "2026-07")
+  return rapportsNouveaux.find(r => r.compteId === compteId && r.periode === periode);
+}
+
+// ── Calculer le 1er jour d'un mois ──────────────────
+function debutMois(periode) {
+  return periode + '-01';
+}
+
+// ── Capturer les RAN de tous les comptes pour un mois ─
+async function capturerRANMois(periode, mode = 'AUTOMATIQUE') {
+  // periode = "YYYY-MM"
+  let nbNouveaux = 0, nbExistants = 0;
+
+  for (const c of comptes.filter(c => c.actif !== false)) {
+    const existant = getRAN(c.id, periode);
+    if (existant && existant.verrouille) { nbExistants++; continue; }
+
+    // Calcule le solde à la fin du mois précédent
+    // = solde actuel MOINS toutes les opérations du mois en cours
+    const debutPeriode = debutMois(periode);
+    const [annee, mois] = periode.split('-').map(Number);
+    const moisPrecedent = mois === 1
+      ? `${annee - 1}-12`
+      : `${annee}-${String(mois - 1).padStart(2, '0')}`;
+
+    // Le RAN = solde d'ouverture = solde de clôture du mois précédent
+    // On reconstruit en partant du solde actuel et en retirant les mvts du mois en cours
+    let soldeRAN = c.solde || 0;
+    const mvtsMois = mvts.filter(m => m.compte === c.id && m.date >= debutPeriode);
+    const trfMois = transferts.filter(t =>
+      (t.compteSrc === c.id || t.compteDst === c.id) && t.date >= debutPeriode
+    );
+
+    for (const m of mvtsMois) {
+      if (m.type === 'entrée') soldeRAN -= (m.montant || 0);
+      else if (m.type === 'sortie') soldeRAN += (m.montant || 0);
+    }
+    for (const t of trfMois) {
+      if (t.compteSrc === c.id) soldeRAN += (t.montant || 0); // on annule la sortie
+      if (t.compteDst === c.id) soldeRAN -= (t.montant || 0); // on annule l'entrée
+    }
+    // Versements confirmés du mois
+    const versMois = versements.filter(v =>
+      v.compte === c.id && v.statut === 'confirmé' && v.date >= debutPeriode
+    );
+    for (const v of versMois) soldeRAN -= (v.montant || 0);
+
+    const ran = {
+      id: existant ? existant.id : uid(),
+      compteId: c.id,
+      compteNom: c.nom,
+      compteCat: c.cat,
+      periode,
+      soldeOuverture: Math.round(soldeRAN),
+      soldeActuel: c.solde || 0,
+      devise: DEVISE,
+      mode,
+      verrouille: false,
+      captureTimestamp: new Date().toISOString(),
+      captureUser: currentUser?.nom || 'SYSTEM',
+      pdvIds: pdvs.map(p => p.id), // associés à tous les PDV par défaut
+    };
+
+    if (existant) {
+      const idx = rapportsNouveaux.findIndex(r => r.id === existant.id);
+      rapportsNouveaux[idx] = ran;
+    } else {
+      rapportsNouveaux.push(ran);
+      nbNouveaux++;
+    }
+    await saveItem('rapportsNouveaux', ran);
+  }
+  saveLocal();
+  return { nbNouveaux, nbExistants };
+}
+window.capturerRANMois = capturerRANMois;
+
+// ── Verrouiller tous les RAN d'une période ───────────
+async function verrouillerRANPeriode(periode) {
+  const rans = rapportsNouveaux.filter(r => r.periode === periode);
+  for (const r of rans) {
+    r.verrouille = true;
+    r.verrouilleTimestamp = new Date().toISOString();
+    r.verrouilleUser = currentUser?.nom || 'admin';
+    await saveItem('rapportsNouveaux', r);
+  }
+  saveLocal();
+  toast(`${rans.length} RAN verrouillés pour ${periode} ✓`);
+  renderRAN();
+}
+window.verrouillerRANPeriode = verrouillerRANPeriode;
+
+// ── Détecter les saisies rétroactives ────────────────
+function detecterSaisiesRetroactives(periode) {
+  // Mouvements saisis APRÈS le 1er du mois mais datés AVANT
+  const debutPeriode = debutMois(periode);
+  const retro = [];
+
+  // mvts
+  for (const m of mvts) {
+    if (m.date < debutPeriode && m.ts) {
+      const saisieLe = new Date(m.ts);
+      const dateMvt = new Date(m.date);
+      // Si saisi plus de 5 jours après la date du mouvement
+      const diffJours = Math.floor((saisieLe - dateMvt) / 86400000);
+      if (diffJours > 5) {
+        retro.push({
+          type: 'mouvement',
+          id: m.id,
+          date: m.date,
+          saisieLe: saisieLe.toISOString().split('T')[0],
+          diffJours,
+          libelle: m.libelle || m.rubrique || '—',
+          montant: m.montant,
+          compte: comptes.find(c => c.id === m.compte)?.nom || '—',
+          saisie: m.saisie || '—',
+        });
+      }
+    }
+  }
+
+  // versements
+  for (const v of versements) {
+    if (v.date < debutPeriode && v.ts) {
+      const saisieLe = new Date(v.ts);
+      const dateV = new Date(v.date);
+      const diffJours = Math.floor((saisieLe - dateV) / 86400000);
+      if (diffJours > 5) {
+        retro.push({
+          type: 'versement',
+          id: v.id,
+          date: v.date,
+          saisieLe: saisieLe.toISOString().split('T')[0],
+          diffJours,
+          libelle: `Versement ${MM_LABEL[v.type] || v.type}`,
+          montant: v.montant,
+          compte: comptes.find(c => c.id === v.compte)?.nom || '—',
+          saisie: v.saisie || '—',
+        });
+      }
+    }
+  }
+  return retro.sort((a, b) => b.diffJours - a.diffJours);
+}
+
+// ── Rendu de la page RAN ──────────────────────────────
+function renderRAN() {
+  const t = today();
+  const periodeActuelle = t.slice(0, 7); // "YYYY-MM"
+
+  // Sélecteur de période dans la page
+  const selEl = document.getElementById('ranPeriode');
+  const periode = selEl ? selEl.value || periodeActuelle : periodeActuelle;
+
+  // Filtre PDV
+  const pdvFil = document.getElementById('ranPDVFil')?.value || '';
+
+  // ── Résumé captures ───────────────────────────────
+  const ransActuels = rapportsNouveaux.filter(r => r.periode === periode);
+  const nbVerrouilles = ransActuels.filter(r => r.verrouille).length;
+  const nbTotal = comptes.filter(c => c.actif !== false).length;
+  const nbCaptures = ransActuels.length;
+
+  document.getElementById('ranSummary').innerHTML = `
+    <div class="sc-item"><div class="sc-lbl">Période</div><div class="sc-val" style="color:var(--cyan)">${periode}</div></div>
+    <div class="sc-item"><div class="sc-lbl">Comptes capturés</div><div class="sc-val" style="color:var(--${nbCaptures >= nbTotal ? 'green' : 'amber'})">${nbCaptures} / ${nbTotal}</div></div>
+    <div class="sc-item"><div class="sc-lbl">RAN verrouillés</div><div class="sc-val" style="color:var(--${nbVerrouilles === nbCaptures && nbCaptures > 0 ? 'green' : 'amber'})">${nbVerrouilles}</div></div>
+    <div class="sc-item"><div class="sc-lbl">Saisies rétroactives</div><div class="sc-val" style="color:var(--${detecterSaisiesRetroactives(periode).length > 0 ? 'red' : 'green'})">${detecterSaisiesRetroactives(periode).length} détectée(s)</div></div>
+  `;
+
+  // ── Tableau des RAN ───────────────────────────────
+  const tbody = document.getElementById('ranTbody');
+  if (!tbody) return;
+
+  // Pour chaque compte actif
+  const lignes = comptes.filter(c => c.actif !== false).map(c => {
+    const ran = getRAN(c.id, periode);
+    const soldeOuv = ran ? ran.soldeOuverture : null;
+    const soldeAct = c.solde || 0;
+    const ecart = soldeOuv !== null ? soldeAct - soldeOuv : null;
+    return { c, ran, soldeOuv, soldeAct, ecart };
+  });
+
+  if (!lignes.length) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><div class="ei">📊</div>Aucun compte configuré</div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = lignes.map(({ c, ran, soldeOuv, soldeAct, ecart }, i) => {
+    const catLabel = c.cat === 'mobile_money' ? 'MM' : c.cat === 'banque' ? 'Banque' : 'Caisse';
+    const statut = ran
+      ? ran.verrouille
+        ? `<span class="badge bg">🔒 Verrouillé</span>`
+        : `<span class="badge ba">📝 Capturé</span>`
+      : `<span class="badge br">⚠ Absent</span>`;
+
+    const ecartHtml = ecart !== null
+      ? `<span style="color:${ecart === 0 ? 'var(--green)' : ecart > 0 ? 'var(--green)' : 'var(--red)'}; font-weight:700">
+          ${ecart > 0 ? '+' : ''}${fmt(ecart)}
+        </span>`
+      : '<span style="color:var(--text3)">—</span>';
+
+    const barreHtml = ecart !== null && soldeOuv !== null && soldeOuv !== 0
+      ? (() => {
+          const pct = Math.min(100, Math.abs(soldeAct / soldeOuv * 100));
+          const col = ecart >= 0 ? 'var(--green)' : 'var(--red)';
+          return `<div class="prog-bar" style="margin-top:4px;max-width:120px"><div class="prog-fill" style="width:${pct}%;background:${col}"></div></div>`;
+        })()
+      : '';
+
+    return `<tr>
+      ${rowNum(i)}
+      <td>
+        <div style="font-weight:600">${c.nom}</div>
+        <div style="font-size:.68rem;color:var(--text3)">${catLabel} · ${c.op === 'AUTRE' && c.opLibre ? c.opLibre : c.op}</div>
+      </td>
+      <td>${statut}</td>
+      <td class="amt ${soldeOuv !== null ? (soldeOuv >= 0 ? 'pos' : 'neg') : ''}">
+        ${soldeOuv !== null ? fmt(soldeOuv) : '<span style="color:var(--text3)">Non capturé</span>'}
+      </td>
+      <td class="amt ${soldeAct >= 0 ? 'pos' : 'neg'}">${fmt(soldeAct)}</td>
+      <td>${ecartHtml}${barreHtml}</td>
+      <td style="font-size:.72rem;color:var(--text3)">${ran ? fmtD(ran.captureTimestamp?.split('T')[0] || '') : '—'}</td>
+      <td style="font-size:.72rem;color:var(--text3)">${ran ? ran.captureUser : '—'}</td>
+      <td>
+        ${ran && !ran.verrouille && currentUser?.role === 'admin'
+          ? `<button class="btn btn-ghost btn-xs" onclick="verrouillerRAN('${ran.id}')">🔒</button>`
+          : ''}
+      </td>
+    </tr>`;
+  }).join('');
+
+  // ── Saisies rétroactives ──────────────────────────
+  const retro = detecterSaisiesRetroactives(periode);
+  const retroDiv = document.getElementById('ranRetroBody');
+  if (retroDiv) {
+    if (!retro.length) {
+      retroDiv.innerHTML = '<tr><td colspan="7"><div class="empty-state" style="padding:20px"><div class="ei">✅</div>Aucune saisie rétroactive détectée</div></td></tr>';
+    } else {
+      retroDiv.innerHTML = retro.map(r => `<tr style="background:var(--red-dim)">
+        <td><span class="badge br">🔴 ${r.type}</span></td>
+        <td>${fmtD(r.date)}</td>
+        <td>${fmtD(r.saisieLe)}</td>
+        <td style="color:var(--red);font-weight:700">+${r.diffJours} jours</td>
+        <td style="font-size:.8rem">${r.libelle}</td>
+        <td class="amt neg">−${fmt(r.montant)}</td>
+        <td style="font-size:.78rem;color:var(--text2)">${r.saisie}</td>
+      </tr>`).join('');
+    }
+  }
+}
+window.renderRAN = renderRAN;
+
+// ── Verrouiller un seul RAN ───────────────────────────
+async function verrouillerRAN(ranId) {
+  const r = rapportsNouveaux.find(x => x.id === ranId);
+  if (!r) return;
+  if (!confirm(`Verrouiller définitivement le RAN de "${r.compteNom}" pour ${r.periode} ?\n\nCette action est irréversible.`)) return;
+  r.verrouille = true;
+  r.verrouilleTimestamp = new Date().toISOString();
+  r.verrouilleUser = currentUser?.nom || 'admin';
+  await saveItem('rapportsNouveaux', r);
+  saveLocal();
+  renderRAN();
+  toast(`RAN "${r.compteNom}" verrouillé ✓`);
+}
+window.verrouillerRAN = verrouillerRAN;
+
+// ── Action : capturer RAN mois courant ───────────────
+async function actionCapturerRAN() {
+  const selEl = document.getElementById('ranPeriode');
+  const periode = selEl ? selEl.value || today().slice(0, 7) : today().slice(0, 7);
+  const nbExistants = rapportsNouveaux.filter(r => r.periode === periode && r.verrouille).length;
+  if (nbExistants > 0) {
+    toast(`⚠ ${nbExistants} RAN déjà verrouillés pour ${periode} — non modifiés`, 'info');
+  }
+  sync('syncing', 'Capture RAN…');
+  const { nbNouveaux } = await capturerRANMois(periode, 'MANUEL');
+  sync('ok', '🔴 Temps réel');
+  toast(`✅ RAN capturés — ${nbNouveaux} nouveau(x) pour ${periode}`);
+  renderRAN();
+}
+window.actionCapturerRAN = actionCapturerRAN;
+
+// ── Export RAN ────────────────────────────────────────
+function exportRAN(format) {
+  const selEl = document.getElementById('ranPeriode');
+  const periode = selEl ? selEl.value || today().slice(0, 7) : today().slice(0, 7);
+  const lignes = comptes.filter(c => c.actif !== false).map(c => {
+    const ran = getRAN(c.id, periode);
+    const soldeAct = c.solde || 0;
+    const ecart = ran ? soldeAct - ran.soldeOuverture : null;
+    return [
+      c.nom,
+      c.cat === 'mobile_money' ? 'Mobile Money' : c.cat === 'banque' ? 'Banque' : 'Caisse',
+      ran ? fmt(ran.soldeOuverture) : 'Non capturé',
+      fmt(soldeAct),
+      ecart !== null ? (ecart >= 0 ? '+' : '') + fmt(ecart) : '—',
+      ran ? (ran.verrouille ? '🔒 Verrouillé' : 'Capturé') : 'Absent',
+      ran ? ran.captureUser : '—',
+      ran ? fmtD(ran.captureTimestamp?.split('T')[0] || '') : '—',
+    ];
+  });
+  exportUniversel(
+    `Reports à Nouveaux — ${periode}`,
+    ['Compte', 'Type', 'Solde ouverture (RAN)', 'Solde actuel', 'Écart', 'Statut', 'Saisi par', 'Capturé le'],
+    lignes,
+    { format, periode }
+  );
+}
+window.exportRAN = exportRAN;
+
+// ── Auto-capture RAN au 1er du mois ──────────────────
+function scheduleAutoRAN() {
+  const now = new Date();
+  const next = new Date(now);
+  // Si on est le 1er du mois et qu'il est avant 8h → capturer ce matin
+  if (now.getDate() === 1 && now.getHours() < 8) {
+    next.setHours(8, 0, 0, 0);
+  } else {
+    // Sinon, prochain 1er du mois à 8h
+    next.setDate(1);
+    next.setMonth(next.getMonth() + 1);
+    next.setHours(8, 0, 0, 0);
+  }
+  const delay = next - now;
+  setTimeout(async () => {
+    const periode = today().slice(0, 7);
+    const existants = rapportsNouveaux.filter(r => r.periode === periode);
+    if (!existants.length) {
+      await capturerRANMois(periode, 'AUTOMATIQUE');
+      toast(`📅 RAN automatiques capturés pour ${periode}`);
+    }
+    scheduleAutoRAN();
+  }, delay);
+}
+
+// ══════════════════════════════════════════════════════
 // ── BACKUP & UTILS EXPOSED ─────────────────────────────
 window.backupPC=backupPC;window.backupDropbox=backupDropbox;
 window.backupNow=backupNow;window.importerDonnees=importerDonnees;
@@ -2920,5 +3292,6 @@ async function init(){
   document.getElementById('loadingOverlay').style.display='none';
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('loginUser').focus();
+  scheduleAutoRAN();
 }
 init();
