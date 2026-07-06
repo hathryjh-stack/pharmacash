@@ -3010,6 +3010,150 @@ async function importerExcel(e){
 }
 window.importerExcel=importerExcel;
 
+// ══════════════════════════════════════════════════════
+// IMPRESSION TABLEAU DE BORD
+// ══════════════════════════════════════════════════════
+function imprimerDashboard() {
+  const t = today();
+  const now = new Date().toLocaleString('fr-FR');
+  const mois = t.slice(0, 7);
+
+  // KPI
+  const todayR = recettes.filter(r => r.date === t);
+  const totalJ = todayR.reduce((s,r) => s + (r.montant||0), 0);
+  const totalM = recettes.filter(r => r.date?.slice(0,7) === mois).reduce((s,r) => s + (r.montant||0), 0);
+  const enAtt  = versements.filter(v => v.statut === 'en attente').reduce((s,v) => s + (v.montant||0), 0);
+  const totConf = versements.filter(v => v.statut === 'confirmé' && v.date?.slice(0,7) === mois).reduce((s,v) => s + (v.montant||0), 0);
+  const dispo  = totalDispo();
+  const transit = totalTransit();
+
+  // Soldes par compte
+  const comptesHtml = comptes.filter(c => c.actif !== false).map(c => `
+    <tr>
+      <td>${c.nom}</td>
+      <td>${c.cat === 'mobile_money' ? 'Mobile Money' : c.cat === 'banque' ? 'Banque' : 'Caisse'}</td>
+      <td>${c.op === 'AUTRE' && c.opLibre ? c.opLibre : c.op}</td>
+      <td style="text-align:right;font-weight:700;color:${(c.solde||0) >= 0 ? '#00C47A' : '#f05050'}">${fmt(c.solde||0)} ${DEVISE}</td>
+      <td style="text-align:center">${c.cat === 'mobile_money' ? '⏳ En transit' : '✓ Disponible'}</td>
+    </tr>`).join('');
+
+  // Derniers versements
+  const dernVers = [...versements].sort((a,b) => (b.ts||0)-(a.ts||0)).slice(0,10);
+  const versHtml = dernVers.map(v => {
+    const pdvNom = pdvs.find(p => p.id === v.pdv)?.nom || v.pdv;
+    const cptNom = comptes.find(c => c.id === v.compte)?.nom || '—';
+    return `<tr>
+      <td>${fmtD(v.date)}</td>
+      <td>${pdvNom}</td>
+      <td>${MM_LABEL[v.type||v.canal]||v.type||v.canal}</td>
+      <td style="text-align:right;font-weight:700;color:#00C47A">${fmt(v.montant)} ${DEVISE}</td>
+      <td style="text-align:center"><span style="padding:2px 8px;border-radius:10px;font-size:8pt;background:${v.statut==='confirmé'?'#e8f5f0':v.statut==='en attente'?'#fff8e1':'#f0f0f0'};color:${v.statut==='confirmé'?'#00C47A':v.statut==='en attente'?'#b45309':'#666'}">${v.statut}</span></td>
+    </tr>`;
+  }).join('');
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Tableau de bord — ${PHARMACIE_NOM}</title>
+  <style>
+    @page{size:A4;margin:12mm}
+    body{font-family:Arial,sans-serif;font-size:9pt;color:#111;margin:0}
+    .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #00C47A;padding-bottom:10px;margin-bottom:14px}
+    .pharma{font-size:14pt;font-weight:800;color:#00C47A}.titre{font-size:11pt;font-weight:700;margin-top:3px}
+    .meta{font-size:7.5pt;color:#999}
+    .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+    .kpi{border:1px solid #eee;border-radius:6px;padding:10px;border-left:3px solid}
+    .kpi-label{font-size:7pt;color:#999;text-transform:uppercase;letter-spacing:.5px}
+    .kpi-val{font-size:13pt;font-weight:800;margin-top:3px}
+    .kpi-sub{font-size:7pt;color:#999;margin-top:2px}
+    h3{font-size:9pt;text-transform:uppercase;letter-spacing:.7px;color:#555;margin:12px 0 6px;border-bottom:1px solid #eee;padding-bottom:4px}
+    table{width:100%;border-collapse:collapse;font-size:8.5pt;margin-bottom:12px}
+    th{background:#f5f5f5;padding:5px 8px;text-align:left;border:1px solid #ddd;font-size:7.5pt;text-transform:uppercase}
+    td{padding:5px 8px;border:1px solid #eee}
+    tr:nth-child(even) td{background:#fafafa}
+    .footer{margin-top:10px;font-size:7pt;color:#bbb;text-align:center;border-top:1px solid #eee;padding-top:6px}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body>
+  <div class="header">
+    <div>
+      <div class="pharma">${PHARMACIE_NOM}</div>
+      <div class="titre">Tableau de bord — Synthèse financière</div>
+      <div class="meta">Imprimé le ${now}</div>
+    </div>
+    <div style="text-align:right">
+      <div class="meta">Période : ${fmtD(t.slice(0,7)+'-01')} au ${fmtD(t)}</div>
+      <div class="meta">Généré par : ${currentUser?.nom || 'administrateur'}</div>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi" style="border-left-color:#00C47A"><div class="kpi-label">Recettes aujourd'hui</div><div class="kpi-val" style="color:#00C47A">${fmt(totalJ)}</div><div class="kpi-sub">${DEVISE} — ${todayR.length} opération(s)</div></div>
+    <div class="kpi" style="border-left-color:#4d8af0"><div class="kpi-label">Recettes ce mois</div><div class="kpi-val" style="color:#4d8af0">${fmt(totalM)}</div><div class="kpi-sub">${DEVISE}</div></div>
+    <div class="kpi" style="border-left-color:#f5a623"><div class="kpi-label">Versements en attente</div><div class="kpi-val" style="color:#f5a623">${fmt(enAtt)}</div><div class="kpi-sub">${DEVISE}</div></div>
+    <div class="kpi" style="border-left-color:#a855f7"><div class="kpi-label">Confirmés ce mois</div><div class="kpi-val" style="color:#a855f7">${fmt(totConf)}</div><div class="kpi-sub">${DEVISE}</div></div>
+    <div class="kpi" style="border-left-color:#00C47A"><div class="kpi-label">✓ Disponible (Banques)</div><div class="kpi-val" style="color:#00C47A">${fmt(dispo)}</div><div class="kpi-sub">${DEVISE}</div></div>
+    <div class="kpi" style="border-left-color:#f5a623"><div class="kpi-label">⏳ En transit (MM)</div><div class="kpi-val" style="color:#f5a623">${fmt(transit)}</div><div class="kpi-sub">${DEVISE}</div></div>
+  </div>
+
+  <h3>Soldes par établissement financier</h3>
+  <table>
+    <thead><tr><th>Compte</th><th>Type</th><th>Opérateur</th><th style="text-align:right">Solde actuel</th><th style="text-align:center">Statut</th></tr></thead>
+    <tbody>${comptesHtml}</tbody>
+    <tr style="background:#e8f5f0;font-weight:700">
+      <td colspan="3">TOTAL DISPONIBLE (Banques + Caisses)</td>
+      <td style="text-align:right;color:#00C47A">${fmt(dispo)} ${DEVISE}</td><td></td>
+    </tr>
+    <tr style="background:#fff8e1;font-weight:700">
+      <td colspan="3">TOTAL EN TRANSIT (Mobile Money)</td>
+      <td style="text-align:right;color:#f5a623">${fmt(transit)} ${DEVISE}</td><td></td>
+    </tr>
+  </table>
+
+  <h3>Derniers versements (10 récents)</h3>
+  <table>
+    <thead><tr><th>Date</th><th>PDV</th><th>Type</th><th style="text-align:right">Montant</th><th style="text-align:center">Statut</th></tr></thead>
+    <tbody>${versHtml || '<tr><td colspan="5" style="text-align:center;color:#999">Aucun versement</td></tr>'}</tbody>
+  </table>
+
+  <div class="footer">PharmaCash Pro — Document confidentiel — ${PHARMACIE_NOM} — ${now}</div>
+  <script>window.onload=()=>window.print()<\/script>
+  </body></html>`;
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+}
+window.imprimerDashboard = imprimerDashboard;
+
+function exportDashboard(format) {
+  const t = today(), mois = t.slice(0,7);
+  const totalJ = recettes.filter(r=>r.date===t).reduce((s,r)=>s+(r.montant||0),0);
+  const totalM = recettes.filter(r=>r.date?.slice(0,7)===mois).reduce((s,r)=>s+(r.montant||0),0);
+  const enAtt  = versements.filter(v=>v.statut==='en attente').reduce((s,v)=>s+(v.montant||0),0);
+  const totConf= versements.filter(v=>v.statut==='confirmé'&&v.date?.slice(0,7)===mois).reduce((s,v)=>s+(v.montant||0),0);
+
+  const lignesKPI = [
+    ['Indicateur','Valeur','Devise'],
+    ['Recettes aujourd\'hui', totalJ, DEVISE],
+    ['Recettes ce mois', totalM, DEVISE],
+    ['Versements en attente', enAtt, DEVISE],
+    ['Versements confirmés ce mois', totConf, DEVISE],
+    ['Total disponible (Banques)', totalDispo(), DEVISE],
+    ['Total en transit (MM)', totalTransit(), DEVISE],
+  ];
+  const lignesComptes = comptes.filter(c=>c.actif!==false).map(c=>[
+    c.nom,
+    c.cat==='mobile_money'?'Mobile Money':c.cat==='banque'?'Banque':'Caisse',
+    c.op==='AUTRE'&&c.opLibre?c.opLibre:c.op,
+    c.solde||0,
+    c.cat==='mobile_money'?'En transit':'Disponible'
+  ]);
+  exportUniversel('Tableau de bord',
+    ['Compte','Type','Opérateur','Solde (FCFA)','Statut'],
+    lignesComptes,
+    {format, periode:`Au ${fmtD(t)}`,
+     totaux:[['TOTAL DISPONIBLE','','',fmt(totalDispo()),''],['TOTAL EN TRANSIT','','',fmt(totalTransit()),'']]}
+  );
+}
+window.exportDashboard = exportDashboard;
+
 // ── Navigation rapide Dashboard → Versements ou Recettes PDV+Canal ──
 function ouvrirVersementsPDV(pdvId, canal) {
   goTo('versements');
