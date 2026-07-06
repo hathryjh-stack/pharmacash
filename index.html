@@ -117,6 +117,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <div class="nav-item" onclick="goTo('rapport')"><span class="nav-icon">📈</span> Rapport</div>
       <div class="nav-item" onclick="goTo('releves')"><span class="nav-icon">🖨️</span> Relevés & Export</div>
       <div class="nav-item" onclick="goTo('caissiere')"><span class="nav-icon">👤</span> Suivi caissières</div>
+      <div class="nav-item" onclick="goTo('ran')" style="color:var(--cyan)"><span class="nav-icon">📅</span> Reports à Nouveaux</div>
       <div class="nav-sec admin-only">Administration</div>
       <div class="nav-item admin-only" onclick="goTo('admin')"><span class="nav-icon">⚙️</span> Configuration</div>
       <div class="nav-item admin-only" onclick="goTo('utilisateurs')"><span class="nav-icon">👥</span> Utilisateurs</div>
@@ -149,7 +150,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <button class="btn btn-green btn-sm" onclick="openRecetteModal()">+ Recette</button>
           </div></div>
         <div class="filters"><input type="date" id="fRDate" class="fi" onchange="renderRecettes()"><select id="fRPDV" class="fi" onchange="renderRecettes()"><option value="">Tous PDV</option></select><select id="fRCanal" class="fi" onchange="renderRecettes()"><option value="">Tous canaux</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fRDate','fRPDV','fRCanal');renderRecettes()">✕</button></div>
-        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>PDV</th><th>Canal</th><th>Type</th><th>Montant</th><th>Réf.</th><th>Saisi par</th><th></th></tr></thead><tbody id="recTbody"></tbody></table></div></div>
+        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>PDV</th><th>Canal</th><th>Type</th><th>Montant</th><th>Réf.</th><th>Saisi par</th><th></th></tr></thead><tbody id="recTbody"></tbody></table></div></div>
       </div>
       <!-- VERSEMENTS -->
       <div class="pg" id="pg-versements">
@@ -165,7 +166,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           <button class="btn btn-green btn-sm" onclick="openVersModal()">+ Versement(s)</button>
         </div></div>
         <div class="filters"><input type="date" id="fVDate" class="fi" onchange="renderVersements()"><select id="fVPDV" class="fi" onchange="renderVersements()"><option value="">Tous PDV</option></select><select id="fVType" class="fi" onchange="renderVersements()"><option value="">Tous types</option><option value="OM">Orange Money</option><option value="MTN">MTN MoMo</option><option value="WAVE">Wave</option><option value="MOOV">Moov Money</option><option value="CASH">Cash (Caisse PDV)</option><option value="BANQUE_PDV">Versement Banque locale</option><option value="CHEQUE">Chèque</option><option value="VIREMENT">Virement</option></select><select id="fVStatut" class="fi" onchange="renderVersements()"><option value="">Tous statuts</option><option value="en attente">En attente</option><option value="reçu">Reçu</option><option value="confirmé">Confirmé</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fVDate','fVPDV','fVType','fVStatut');renderVersements()">✕</button></div>
-        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>PDV</th><th>Fréq.</th><th>Type</th><th>Compte dest.</th><th>Réf.</th><th>Montant</th><th>Statut</th><th>Saisi par</th><th></th></tr></thead><tbody id="verTbody"></tbody></table></div></div>
+        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>PDV</th><th>Fréq.</th><th>Type</th><th>Compte dest.</th><th>Réf.</th><th>Montant</th><th>Statut</th><th>Saisi par</th><th></th></tr></thead><tbody id="verTbody"></tbody></table></div></div>
       </div>
       <!-- CAISSE -->
       <div class="pg" id="pg-caisse">
@@ -183,7 +184,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
         <div class="tab-day-nav"><button class="btn btn-ghost btn-sm" onclick="caisseNavDay(-1)">←</button><input type="date" id="caisseDate" onchange="renderCaisse()"><button class="btn btn-ghost btn-sm" onclick="caisseNavDay(1)">→</button><button class="btn btn-ghost btn-sm" onclick="document.getElementById('caisseDate').value=today();renderCaisse()">Auj.</button></div>
         <div class="summary-caisse" id="caisseSummary"></div>
         <div class="caisse-grid" id="caisseGrid"></div>
-        <div class="card"><div class="card-header"><span class="card-title">Détail du jour</span></div><div class="tbl-wrap"><table><thead><tr><th>Vacation</th><th>Caissière</th><th>Machine</th><th>Cash versé</th><th>MM versé</th><th>Total versé</th><th>Écart</th><th>Statut</th><th>Validé par</th><th></th></tr></thead><tbody id="caisseTbody"></tbody></table></div></div>
+        <div class="card"><div class="card-header"><span class="card-title">Détail du jour</span></div><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Vacation</th><th>Caissière</th><th>Machine</th><th>Cash versé</th><th>MM versé</th><th>Total versé</th><th>Écart</th><th>Statut</th><th>Validé par</th><th></th></tr></thead><tbody id="caisseTbody"></tbody></table></div></div>
       </div>
       <!-- BANQUES -->
       <div class="pg" id="pg-banques">
@@ -201,7 +202,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
         <div class="compte-cards" id="bqComptes"></div>
         <div class="card"><div class="card-header"><span class="card-title">Journal des mouvements</span></div>
           <div class="filters"><input type="date" id="fMDate" class="fi" onchange="renderMvts()"><select id="fMCompte" class="fi" onchange="renderMvts()"><option value="">Tous comptes</option></select><select id="fMType" class="fi" onchange="renderMvts()"><option value="">Tous types</option><option value="entrée">Entrées</option><option value="sortie">Sorties</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fMDate','fMCompte','fMType');renderMvts()">✕</button></div>
-          <div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Compte</th><th>Type</th><th>Libellé</th><th>Réf.</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="mvtTbody"></tbody></table></div>
+          <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>Compte</th><th>Type</th><th>Libellé</th><th>Réf.</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="mvtTbody"></tbody></table></div>
         </div>
       </div>
       <!-- RAPPORT -->
@@ -230,7 +231,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <button class="btn btn-red btn-sm" onclick="openCPModal('sortie')">↓ Sortie</button>
           </div>
         </div>
-        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Rubrique</th><th>Libellé</th><th>Bénéficiaire</th><th>Référence</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="cpTbody"></tbody></table></div></div>
+        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Rubrique</th><th>Libellé</th><th>Bénéficiaire</th><th>Référence</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="cpTbody"></tbody></table></div></div>
       </div>
 
       <!-- PETITE CAISSE -->
@@ -269,7 +270,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <button class="btn btn-ghost btn-sm" onclick="refreshPage()">↻</button>
           </div>
         </div>
-        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Caissière</th><th>Machine</th><th>Cash versé</th><th>MM versé</th><th>Total versé</th><th>Écart</th><th>Vacations</th></tr></thead><tbody id="scTbody"></tbody></table></div></div>
+        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Caissière</th><th>Machine</th><th>Cash versé</th><th>MM versé</th><th>Total versé</th><th>Écart</th><th>Vacations</th></tr></thead><tbody id="scTbody"></tbody></table></div></div>
       </div>
       <!-- RELEVÉS & EXPORT refonte v4.1 -->
       <div class="pg" id="pg-releves">
@@ -303,6 +304,109 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
         </div>
         <div class="releve-preview" id="relevePreview"><div class="empty-state"><div class="ei">🖨️</div>Sélectionne le type de relevé et clique sur "Générer"</div></div>
       </div>
+      <!-- REPORTS À NOUVEAUX (RAN) v4.2 -->
+      <div class="pg" id="pg-ran">
+        <div class="pg-header">
+          <div>
+            <div class="pg-title">📅 Reports à Nouveaux (RAN)</div>
+            <div class="pg-sub">Soldes d'ouverture mensuels — contrôle a posteriori des saisies collaborateurs</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <div style="display:flex;gap:3px">
+              <button class="btn btn-ghost btn-xs" onclick="exportRAN('print')" title="Imprimer">🖨️</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportRAN('excel')" title="Excel">📊</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportRAN('word')" title="Word">📝</button>
+              <button class="btn btn-ghost btn-xs" onclick="exportRAN('pdf')" title="PDF">📄</button>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="renderRAN()">↻</button>
+            <button class="btn btn-blue btn-sm admin-only" onclick="verrouillerRANPeriode(document.getElementById('ranPeriode').value)">🔒 Verrouiller tout</button>
+            <button class="btn btn-green btn-sm admin-only" onclick="actionCapturerRAN()">⚡ Capturer RAN</button>
+          </div>
+        </div>
+
+        <!-- Barre de contrôle période + filtre -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">
+          <div class="fg" style="margin:0;min-width:160px">
+            <label style="font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.7px">Période (mois)</label>
+            <input type="month" id="ranPeriode" class="fi" style="max-width:180px" onchange="renderRAN()">
+          </div>
+          <div class="fg" style="margin:0;min-width:180px">
+            <label style="font-size:.72rem;color:var(--text2);text-transform:uppercase;letter-spacing:.7px">Point de vente</label>
+            <select id="ranPDVFil" class="fi" onchange="renderRAN()" style="max-width:200px">
+              <option value="">Tous les PDV / Centrale</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Résumé KPI -->
+        <div class="summary-caisse" id="ranSummary" style="margin-bottom:14px"></div>
+
+        <!-- Encadré info -->
+        <div style="background:var(--cyan-dim);border:1px solid var(--cyan);border-radius:8px;padding:10px 14px;font-size:.8rem;color:var(--cyan);margin-bottom:14px">
+          <b>📌 Comment ça marche :</b> Clique sur <b>⚡ Capturer RAN</b> au début de chaque mois pour figer les soldes d'ouverture.
+          Ensuite <b>🔒 Verrouiller tout</b> pour empêcher toute modification. Les saisies rétroactives (datées avant le mois en cours mais saisies tardivement) sont détectées automatiquement ci-dessous.
+        </div>
+
+        <!-- Tableau RAN par compte -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Soldes d'ouverture par compte</span>
+            <span style="font-size:.75rem;color:var(--text3)">RAN = Solde au 1er jour du mois sélectionné</span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Compte</th>
+                  <th>Statut</th>
+                  <th>Solde ouverture (RAN)</th>
+                  <th>Solde actuel</th>
+                  <th>Écart depuis ouverture</th>
+                  <th>Capturé le</th>
+                  <th>Par</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="ranTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Journal saisies rétroactives -->
+        <div class="card" style="border-color:var(--red-dim)">
+          <div class="card-header">
+            <span class="card-title" style="color:var(--red)">🔴 Saisies rétroactives détectées</span>
+            <span style="font-size:.75rem;color:var(--text3)">Mouvements datés dans le passé mais saisis avec + de 5 jours de retard</span>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Date du mouvement</th>
+                  <th>Date de saisie</th>
+                  <th>Retard</th>
+                  <th>Libellé</th>
+                  <th>Montant</th>
+                  <th>Saisi par</th>
+                </tr>
+              </thead>
+              <tbody id="ranRetroBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Légende -->
+        <div class="card" style="font-size:.78rem;color:var(--text2)">
+          <div class="card-title" style="margin-bottom:8px">Légende</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap">
+            <span><span class="badge bg">🔒 Verrouillé</span> — RAN figé, non modifiable</span>
+            <span><span class="badge ba">📝 Capturé</span> — RAN enregistré, encore modifiable par admin</span>
+            <span><span class="badge br">⚠ Absent</span> — Pas encore capturé pour cette période</span>
+          </div>
+        </div>
+      </div>
+
       <!-- ADMIN -->
       <div class="pg" id="pg-admin">
         <div class="pg-header"><div><div class="pg-title">⚙️ Configuration</div><div class="pg-sub">Paramètres de l'application</div></div></div>
