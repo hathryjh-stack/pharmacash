@@ -396,11 +396,15 @@ function renderDashboard(){
     </div>`;
   }).join('');
   const rTb=document.getElementById('dbRecTbody');
-  rTb.innerHTML=todayR.length?todayR.map(r=>`<tr><td>${pdvBadge(r.pdv)}</td><td>${mmBadge(r.canal)}</td><td class="amt pos">${fmt(r.montant)}</td></tr>`).join('')
+  rTb.innerHTML=todayR.length?todayR.map(r=>`<tr style="cursor:pointer" onclick="ouvrirRecettesPDV('${r.pdv}','${r.canal}')" title="Voir recettes ${pdvs.find(p=>p.id===r.pdv)?.nom||r.pdv}">
+    <td>${pdvBadge(r.pdv)}</td><td>${mmBadge(r.canal)}</td><td class="amt pos">${fmt(r.montant)}</td>
+  </tr>`).join('')
     :'<tr><td colspan="3" style="color:var(--text3);text-align:center;padding:14px">Aucune recette</td></tr>';
   const vTb=document.getElementById('dbVerTbody');
   const lastV=[...versements].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,6);
-  vTb.innerHTML=lastV.length?lastV.map(v=>`<tr><td>${pdvBadge(v.pdv)}</td><td>${mmBadge(v.type||v.canal)}</td><td class="amt pos">${fmt(v.montant)}</td><td>${statutBadge(v.statut)}</td></tr>`).join('')
+  vTb.innerHTML=lastV.length?lastV.map(v=>`<tr style="cursor:pointer" onclick="ouvrirVersementsPDV('${v.pdv}','${v.type||v.canal}')" title="Voir versements ${pdvs.find(p=>p.id===v.pdv)?.nom||v.pdv}">
+    <td>${pdvBadge(v.pdv)}</td><td>${mmBadge(v.type||v.canal)}</td><td class="amt pos">${fmt(v.montant)}</td><td>${statutBadge(v.statut)}</td>
+  </tr>`).join('')
     :'<tr><td colspan="4" style="color:var(--text3);text-align:center;padding:14px">Aucun versement</td></tr>';
 }
 window.renderDashboard=renderDashboard;
@@ -3006,8 +3010,64 @@ async function importerExcel(e){
 }
 window.importerExcel=importerExcel;
 
-// ══════════════════════════════════════════════════════
-// MODULE RAN v4.2 — Reports à Nouveaux & Contrôle a Posteriori
+// ── Navigation rapide Dashboard → Versements ou Recettes PDV+Canal ──
+function ouvrirVersementsPDV(pdvId, canal) {
+  goTo('versements');
+  setTimeout(() => {
+    const fPDV=document.getElementById('fVPDV');
+    const fType=document.getElementById('fVType');
+    if(fPDV)fPDV.value=pdvId;
+    if(fType)fType.value=canal;
+    renderVersements();
+    document.getElementById('verTbody')?.closest('.card')?.scrollIntoView({behavior:'smooth',block:'start'});
+    const nomPDV=pdvs.find(p=>p.id===pdvId)?.nom||pdvId;
+    toast(`💸 Versements — ${nomPDV} · ${MM_LABEL[canal]||canal}`);
+  }, 100);
+}
+window.ouvrirVersementsPDV=ouvrirVersementsPDV;
+
+function ouvrirRecettesPDV(pdvId, canal) {
+  goTo('recettes');
+  setTimeout(() => {
+    const fPDV=document.getElementById('fRPDV');
+    const fCanal=document.getElementById('fRCanal');
+    if(fPDV)fPDV.value=pdvId;
+    if(fCanal)fCanal.value=canal;
+    renderRecettes();
+    document.getElementById('recTbody')?.closest('.card')?.scrollIntoView({behavior:'smooth',block:'start'});
+    const nomPDV=pdvs.find(p=>p.id===pdvId)?.nom||pdvId;
+    toast(`🧾 Recettes — ${nomPDV} · ${MM_LABEL[canal]||canal}`);
+  }, 100);
+}
+window.ouvrirRecettesPDV=ouvrirRecettesPDV;
+  // Filtre sur le mois en cours
+  const debutMoisCourant = today().slice(0,7) + '-01';
+
+  // Navigue vers la page versements
+  goTo('versements');
+
+  // Applique les filtres après rendu
+  setTimeout(() => {
+    const fPDV = document.getElementById('fVPDV');
+    const fType = document.getElementById('fVType');
+    const fDate = document.getElementById('fVDate');
+
+    if(fPDV) fPDV.value = pdvId;
+    if(fType) fType.value = canal;
+    if(fDate) fDate.value = ''; // pas de filtre date pour voir tout le mois
+
+    renderVersements();
+
+    // Scroll vers le tableau
+    document.getElementById('verTbody')?.closest('.card')?.scrollIntoView({behavior:'smooth', block:'start'});
+
+    // Affiche un toast informatif
+    const nomPDV = pdvs.find(p=>p.id===pdvId)?.nom || pdvId;
+    const nomCanal = MM_LABEL[canal] || canal;
+    toast(`📋 Versements — ${nomPDV} · ${nomCanal}`);
+  }, 100);
+}
+window.ouvrirVersementsPDV = ouvrirVersementsPDV;
 // ══════════════════════════════════════════════════════
 
 // ── Obtenir le RAN actif pour un compte et une période ─
