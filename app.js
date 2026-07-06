@@ -1143,12 +1143,26 @@ function openCaisseModal(id){
     const sel=document.getElementById(`mcCpt${op}`);
     if(!sel)continue;
     sel.innerHTML=mmOpts(op);
-    // Cherche d'abord un compte local non-tête-de-pont
-    const local=comptes.find(c=>c.op===op&&c.actif!==false&&!c.tetePont&&!c.nom.toLowerCase().includes('centr'));
+    // Priorité 1 : compte par défaut PDV si opérateur correspond
+    const cptDef=pdvP?.compteDefaut?comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===op&&c.actif!==false):null;
+    // Priorité 2 : compte dont le nom contient un mot-clé du PDV (non tête de pont)
+    const nomPDV=(pdvP?.nom||'').toLowerCase();
+    const motsCles=nomPDV.split(/\s+/).filter(m=>m.length>3);
+    const cptNomPDV=comptes.find(c=>c.op===op&&c.actif!==false&&!c.tetePont&&motsCles.some(mot=>c.nom.toLowerCase().includes(mot)));
+    // Priorité 3 : n'importe quel compte MM non tête de pont
+    const local=comptes.find(c=>c.op===op&&c.actif!==false&&!c.tetePont);
+    // Priorité 4 : tête de pont en dernier recours
     const centrale=comptes.find(c=>c.op===op&&c.actif!==false&&c.tetePont);
-    const cptDef=pdvP?.compteDefaut?comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===op):null;
-    const best=(cptDef?.id)||(local?.id)||(centrale?.id)||'';
+    const best=(cptDef?.id)||(cptNomPDV?.id)||(local?.id)||(centrale?.id)||'';
     if(best)sel.value=best;
+    // Alerte visuelle si on tombe sur une tête de pont
+    const cptChoisi=comptes.find(c=>c.id===best);
+    if(cptChoisi?.tetePont){
+      sel.style.border='1px solid var(--amber)';
+      sel.title=`⚠ Tête de pont sélectionnée — créez un compte "${op} — ${pdvP?.nom||'PDV'}" pour éviter cela`;
+    } else {
+      sel.style.border='';sel.title='';
+    }
   }
   openM('mCaisse');
 }
@@ -1183,50 +1197,34 @@ async function saveCloture(){
         let compteId = '';
 
         if(type==='CASH'){
-          // Utilise le sélecteur du modal s'il existe, sinon logique auto
+          // Sélecteur manuel du modal → sinon compte caisse non-petite-caisse du PDV
           compteId = document.getElementById('mcCptCash')?.value
             || pdvP.caisseDirecte
             || comptes.find(c=>c.cat==='caisse'&&!c.nom.toLowerCase().includes('petite')&&c.actif!==false)?.id
             || comptes[0]?.id||'';
         } else {
-          // Utilise le sélecteur du modal s'il existe
-          const selVal=document.getElementById(`mcCpt${type}`)?.value;
-          if(selVal){ compteId=selVal; }
-          else {
-          // MM → cherche d'abord un compte MM non-tête-de-pont pour ce PDV
-          // (compte local de la pharmacie principale, ex: OM Pharmacie Principale)
-          const compteLocal = comptes.find(c=>
-            c.op===type &&
-            c.actif!==false &&
-            !c.tetePont &&
-            // exclut les comptes dont le nom contient "centrale" ou "central"
-            !c.nom.toLowerCase().includes('centr')
-          );
-          // Tête de pont = compte centralisateur des dépôts
-          const compteCentrale = comptes.find(c=>c.op===type&&c.actif!==false&&c.tetePont);
-          // Compte par défaut du PDV s'il est du bon opérateur
-          const cptDefaut = pdvP.compteDefaut
-            ? comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===type)
-            : null;
-
-          compteId = (cptDefaut?.id) || (compteLocal?.id) || (compteCentrale?.id) || comptes[0]?.id||'';
+          // Priorité 1 : sélecteur manuel dans le modal clôture
+          const selVal = document.getElementById(`mcCpt${type}`)?.value;
+          if(selVal){
+            compteId = selVal;
+          } else {
+            // Priorité 2 : compte par défaut du PDV si opérateur correspond
+            const cptDefaut = pdvP.compteDefaut
+              ? comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===type&&c.actif!==false)
+              : null;
+            // Priorité 3 : compte MM lié au PDV par son nom (ex: "OM — PSRM", "Wave — Pharmacie Principale")
+            const nomPDV = pdvP.nom.toLowerCase();
+            const motsCles = nomPDV.split(/\s+/).filter(m=>m.length>3);
+            const cptNomPDV = comptes.find(c=>
+              c.op===type && c.actif!==false && !c.tetePont &&
+              motsCles.some(mot=>c.nom.toLowerCase().includes(mot))
+            );
+            // Priorité 4 : n'importe quel compte MM NON tête de pont
+            const cptLocal = comptes.find(c=>c.op===type&&c.actif!==false&&!c.tetePont);
+            // Priorité 5 : tête de pont en dernier recours absolu
+            const cptTP = comptes.find(c=>c.op===type&&c.actif!==false&&c.tetePont);
+            compteId = (cptDefaut?.id)||(cptNomPDV?.id)||(cptLocal?.id)||(cptTP?.id)||comptes[0]?.id||'';
           }
-          // (compte local de la pharmacie principale, ex: OM Pharmacie Principale)
-          const compteLocal = comptes.find(c=>
-            c.op===type &&
-            c.actif!==false &&
-            !c.tetePont &&
-            // exclut les comptes dont le nom contient "centrale" ou "central"
-            !c.nom.toLowerCase().includes('centr')
-          );
-          // Tête de pont = compte centralisateur des dépôts
-          const compteCentrale = comptes.find(c=>c.op===type&&c.actif!==false&&c.tetePont);
-          // Compte par défaut du PDV s'il est du bon opérateur
-          const cptDefaut = pdvP.compteDefaut
-            ? comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===type)
-            : null;
-
-          compteId = (cptDefaut?.id) || (compteLocal?.id) || (compteCentrale?.id) || comptes[0]?.id||'';
         }
 
         const v={id:uid(),date,pdv:pdvP.id,freq:'quotidien',type,
@@ -3369,6 +3367,113 @@ async function refreshPage(){
     caissiere:renderSuiviCaissiere,admin:renderAdmin,utilisateurs:renderUsers})[active]?.();
   toast('Données actualisées ✓');
 }
+// ══════════════════════════════════════════════════════
+// CORRECTION MASSIVE — Réimputation clôtures tête de pont
+// Supprime tous les versements/mvts de clôture imputés sur
+// une tête de pont depuis le 01/07/2026, et recalcule les soldes
+// ══════════════════════════════════════════════════════
+async function corrigerImputationsTetePont() {
+  const dateDebut = '2026-07-01';
+
+  // Identifie les comptes têtes de pont
+  const tetesPont = comptes.filter(c => c.tetePont && c.actif !== false);
+  if (!tetesPont.length) { toast('Aucune tête de pont configurée', 'err'); return; }
+
+  const nomsTPs = tetesPont.map(c => c.nom).join(', ');
+
+  // Identifie les versements issus de clôtures imputés sur une tête de pont
+  const versCloture = versements.filter(v =>
+    v.date >= dateDebut &&
+    v.notes && v.notes.startsWith('Clôture:') &&
+    tetesPont.some(tp => tp.id === v.compte)
+  );
+
+  // Identifie les mouvements Firebase correspondants (entrée créditée sur tête de pont)
+  const mvtsCloture = mvts.filter(m =>
+    m.date >= dateDebut &&
+    m.type === 'entrée' &&
+    tetesPont.some(tp => tp.id === m.compte) &&
+    (m.libelle?.includes('Versement') || m.libelle?.includes('Clôture') || m.rubrique === 'Versement PDV')
+  );
+
+  // Frais associés (sortie sur même compte même date même référence)
+  const fraisCloture = mvts.filter(m =>
+    m.date >= dateDebut &&
+    m.type === 'sortie' &&
+    tetesPont.some(tp => tp.id === m.compte) &&
+    (m.libelle?.includes('Frais') && m.libelle?.includes('PHARMA MBENGUE'))
+  );
+
+  const totalVers = versCloture.length;
+  const totalMvts = mvtsCloture.length + fraisCloture.length;
+
+  if (!totalVers && !totalMvts) {
+    toast('Aucune écriture erronée trouvée sur les têtes de pont depuis le 01/07', 'info');
+    return;
+  }
+
+  // Calcule l'impact net sur chaque tête de pont
+  const impactParCompte = {};
+  tetesPont.forEach(tp => { impactParCompte[tp.id] = { nom: tp.nom, montant: 0 }; });
+
+  mvtsCloture.forEach(m => { if (impactParCompte[m.compte]) impactParCompte[m.compte].montant += m.montant; });
+  fraisCloture.forEach(m => { if (impactParCompte[m.compte]) impactParCompte[m.compte].montant -= m.montant; });
+
+  const lignesImpact = Object.values(impactParCompte)
+    .filter(x => x.montant !== 0)
+    .map(x => `• ${x.nom} : ${x.montant > 0 ? '-' : '+'}${fmt(Math.abs(x.montant))} FCFA (solde corrigé)`)
+    .join('\n');
+
+  const msg = `RÉINITIALISATION IMPUTATIONS CLÔTURE\n\n` +
+    `Période : depuis le 01/07/2026\n` +
+    `Têtes de pont concernées : ${nomsTPs}\n\n` +
+    `À supprimer :\n` +
+    `• ${totalVers} versement(s) de clôture mal imputé(s)\n` +
+    `• ${totalMvts} mouvement(s) financier(s) associé(s)\n\n` +
+    `Correction des soldes :\n${lignesImpact || '• Aucun impact calculé'}\n\n` +
+    `⚠ Cette opération est irréversible.\nFais une sauvegarde avant de confirmer.\n\nConfirmer ?`;
+
+  if (!confirm(msg)) return;
+
+  sync('syncing', 'Correction en cours…');
+  toast('Correction en cours…', 'info');
+
+  // ── Suppression des versements erronés ──
+  for (const v of versCloture) {
+    versements = versements.filter(x => x.id !== v.id);
+    await delItem('versements', v.id);
+  }
+
+  // ── Suppression des mouvements erronés + recalcul solde ──
+  for (const m of [...mvtsCloture, ...fraisCloture]) {
+    const c = comptes.find(x => x.id === m.compte);
+    if (c) {
+      // Annule l'effet du mouvement sur le solde
+      if (m.type === 'entrée') c.solde = (c.solde || 0) - m.montant;
+      else if (m.type === 'sortie') c.solde = (c.solde || 0) + m.montant;
+      await saveItem('comptes', c);
+    }
+    mvts = mvts.filter(x => x.id !== m.id);
+    await delItem('mvts', m.id);
+  }
+
+  saveLocal();
+  sync('ok', '🔴 Temps réel');
+
+  const recap = `✅ Correction terminée !\n` +
+    `${totalVers} versement(s) supprimé(s)\n` +
+    `${totalMvts} mouvement(s) supprimé(s)\n\n` +
+    `Les soldes des têtes de pont ont été recalculés.\n` +
+    `Les clôtures restent intactes — seule l'imputation comptable a été annulée.\n\n` +
+    `Tu peux maintenant re-valider les clôtures depuis le 01/07 — elles iront sur les bons comptes PSRM.`;
+
+  alert(recap);
+  toast('Correction terminée ✓');
+  renderDashboard();
+  renderBanques();
+}
+window.corrigerImputationsTetePont = corrigerImputationsTetePont;
+
 window.refreshPage=refreshPage;
 async function init(){
   if(useFirebase){sync('syncing','Connexion…');try{await loadAll();sync('ok','🔴 Temps réel');}catch(e){sync('error','Mode local');}}
