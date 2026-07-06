@@ -3040,34 +3040,6 @@ function ouvrirRecettesPDV(pdvId, canal) {
   }, 100);
 }
 window.ouvrirRecettesPDV=ouvrirRecettesPDV;
-  // Filtre sur le mois en cours
-  const debutMoisCourant = today().slice(0,7) + '-01';
-
-  // Navigue vers la page versements
-  goTo('versements');
-
-  // Applique les filtres après rendu
-  setTimeout(() => {
-    const fPDV = document.getElementById('fVPDV');
-    const fType = document.getElementById('fVType');
-    const fDate = document.getElementById('fVDate');
-
-    if(fPDV) fPDV.value = pdvId;
-    if(fType) fType.value = canal;
-    if(fDate) fDate.value = ''; // pas de filtre date pour voir tout le mois
-
-    renderVersements();
-
-    // Scroll vers le tableau
-    document.getElementById('verTbody')?.closest('.card')?.scrollIntoView({behavior:'smooth', block:'start'});
-
-    // Affiche un toast informatif
-    const nomPDV = pdvs.find(p=>p.id===pdvId)?.nom || pdvId;
-    const nomCanal = MM_LABEL[canal] || canal;
-    toast(`📋 Versements — ${nomPDV} · ${nomCanal}`);
-  }, 100);
-}
-window.ouvrirVersementsPDV = ouvrirVersementsPDV;
 // ══════════════════════════════════════════════════════
 
 // ── Obtenir le RAN actif pour un compte et une période ─
