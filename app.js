@@ -1120,7 +1120,37 @@ function openCaisseModal(id){
       document.getElementById('mCaisse')._editId=id;
     }
   } else { document.getElementById('mCaisse')._editId=null; }
-  calcCaisse();openM('mCaisse');
+  calcCaisse();
+  // ── Pré-remplir les comptes destinataires ──────────────
+  const pdvP=pdvs.find(p=>p.type==='principale');
+  const caisseOpts=comptes.filter(c=>c.cat==='caisse'&&c.actif!==false)
+    .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  const mmOpts=(op)=>comptes.filter(c=>c.actif!==false)
+    .map(c=>{
+      const label=c.tetePont?`${c.nom} ⭐ Centrale`:c.nom;
+      return`<option value="${c.id}">${label}</option>`;
+    }).join('');
+  // Cash
+  const cptCash=document.getElementById('mcCptCash');
+  if(cptCash){
+    cptCash.innerHTML=caisseOpts;
+    const defCash=pdvP?.caisseDirecte
+      ||comptes.find(c=>c.cat==='caisse'&&!c.nom.toLowerCase().includes('petite')&&c.actif!==false)?.id;
+    if(defCash)cptCash.value=defCash;
+  }
+  // OM, MTN, Wave, Moov
+  for(const op of ['OM','MTN','WAVE','MOOV']){
+    const sel=document.getElementById(`mcCpt${op}`);
+    if(!sel)continue;
+    sel.innerHTML=mmOpts(op);
+    // Cherche d'abord un compte local non-tête-de-pont
+    const local=comptes.find(c=>c.op===op&&c.actif!==false&&!c.tetePont&&!c.nom.toLowerCase().includes('centr'));
+    const centrale=comptes.find(c=>c.op===op&&c.actif!==false&&c.tetePont);
+    const cptDef=pdvP?.compteDefaut?comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===op):null;
+    const best=(cptDef?.id)||(local?.id)||(centrale?.id)||'';
+    if(best)sel.value=best;
+  }
+  openM('mCaisse');
 }
 window.openCaisseModal=openCaisseModal;
 async function saveCloture(){
@@ -1145,8 +1175,62 @@ async function saveCloture(){
     if(pdvP){
       for(const[type,montant]of[['CASH',cashVerse],['OM',omVerse],['MTN',mtnVerse],['WAVE',waveVerse],['MOOV',moovVerse]]){
         if(!montant)continue;
+
+        // ── Logique de sélection du compte destinataire ──────────────
+        // Priorité 1 : compte par défaut configuré sur le PDV
+        // Priorité 2 : compte MM du PDV correspondant à l'opérateur (NON tête de pont)
+        // Priorité 3 : compte MM tête de pont (Centrale) en dernier recours
+        let compteId = '';
+
+        if(type==='CASH'){
+          // Utilise le sélecteur du modal s'il existe, sinon logique auto
+          compteId = document.getElementById('mcCptCash')?.value
+            || pdvP.caisseDirecte
+            || comptes.find(c=>c.cat==='caisse'&&!c.nom.toLowerCase().includes('petite')&&c.actif!==false)?.id
+            || comptes[0]?.id||'';
+        } else {
+          // Utilise le sélecteur du modal s'il existe
+          const selVal=document.getElementById(`mcCpt${type}`)?.value;
+          if(selVal){ compteId=selVal; }
+          else {
+          // MM → cherche d'abord un compte MM non-tête-de-pont pour ce PDV
+          // (compte local de la pharmacie principale, ex: OM Pharmacie Principale)
+          const compteLocal = comptes.find(c=>
+            c.op===type &&
+            c.actif!==false &&
+            !c.tetePont &&
+            // exclut les comptes dont le nom contient "centrale" ou "central"
+            !c.nom.toLowerCase().includes('centr')
+          );
+          // Tête de pont = compte centralisateur des dépôts
+          const compteCentrale = comptes.find(c=>c.op===type&&c.actif!==false&&c.tetePont);
+          // Compte par défaut du PDV s'il est du bon opérateur
+          const cptDefaut = pdvP.compteDefaut
+            ? comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===type)
+            : null;
+
+          compteId = (cptDefaut?.id) || (compteLocal?.id) || (compteCentrale?.id) || comptes[0]?.id||'';
+          }
+          // (compte local de la pharmacie principale, ex: OM Pharmacie Principale)
+          const compteLocal = comptes.find(c=>
+            c.op===type &&
+            c.actif!==false &&
+            !c.tetePont &&
+            // exclut les comptes dont le nom contient "centrale" ou "central"
+            !c.nom.toLowerCase().includes('centr')
+          );
+          // Tête de pont = compte centralisateur des dépôts
+          const compteCentrale = comptes.find(c=>c.op===type&&c.actif!==false&&c.tetePont);
+          // Compte par défaut du PDV s'il est du bon opérateur
+          const cptDefaut = pdvP.compteDefaut
+            ? comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===type)
+            : null;
+
+          compteId = (cptDefaut?.id) || (compteLocal?.id) || (compteCentrale?.id) || comptes[0]?.id||'';
+        }
+
         const v={id:uid(),date,pdv:pdvP.id,freq:'quotidien',type,
-          compte:comptes.find(c=>c.op===type&&c.actif!==false)?.id||comptes[0]?.id||'',
+          compte:compteId,
           ref:clot.refCash||`Clôture ${caissiere} — ${vacation}`,
           montant,statut:'en attente',saisie:currentUser.nom,notes:`Clôture: ${caissiere}/${vacation}`,ts:Date.now()};
         versements.push(v);await saveItem('versements',v);
