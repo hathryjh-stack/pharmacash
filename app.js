@@ -697,7 +697,10 @@ function renderRecettes(){
     <td class="amt pos">${fmt(r.montant)}</td>
     <td style="color:var(--text2);font-size:.75rem">${r.ref||'—'}</td>
     <td style="color:var(--text2);font-size:.75rem">${r.saisie||'—'}</td>
-    <td>${currentUser.role==='admin'?`<button class="btn btn-red btn-xs" onclick="delRecette('${r.id}')">✕</button>`:''}</td>
+    <td style="display:flex;gap:4px;justify-content:flex-end">
+      ${currentUser.role==='admin'?`<button class="btn btn-ghost btn-xs" onclick="editRecette('${r.id}')" title="Corriger">✏️</button>`:'' }
+      ${currentUser.role==='admin'?`<button class="btn btn-red btn-xs" onclick="delRecette('${r.id}')" title="Supprimer">✕</button>`:''}
+    </td>
   </tr>`).join('');
 }
 window.renderRecettes=renderRecettes;
@@ -734,6 +737,79 @@ async function delRecette(id){
   recettes=recettes.filter(r=>r.id!==id);await delItem('recettes',id);renderRecettes();toast('Supprimé','info');
 }
 window.delRecette=delRecette;
+
+// ── Edition recette (admin) ───────────────────────────
+function editRecette(id){
+  const r=recettes.find(x=>x.id===id);
+  if(!r)return;
+  // Vérifier que la clôture du mois n'est pas encore faite
+  // (on permet la correction jusqu'à fin du mois en cours)
+  const moisRec=r.date?.slice(0,7);
+  const moisCourant=today().slice(0,7);
+  if(moisRec<moisCourant){
+    if(!confirm(`⚠️ Cette recette date du mois de ${moisRec}.\nLe mois est clôturé — modifier quand même ?`))return;
+  }
+  // Pré-remplir le modal avec les valeurs existantes
+  document.getElementById('mRDate').value=r.date||today();
+  document.getElementById('mRHeure').value=r.heure||nowTm();
+  document.getElementById('mRMontant').value=r.montant||'';
+  document.getElementById('mRRef').value=r.ref||'';
+  document.getElementById('mRNotes').value=r.notes||'';
+  document.getElementById('mRSaisie').value=r.saisie||currentUser.nom;
+  document.getElementById('mRPDV').value=r.pdv||'';
+  document.getElementById('mRCanal').value=r.canal||'CASH';
+  document.getElementById('mRType').value=r.type||'vente comptoir';
+  // Changer le titre du modal et le bouton
+  const title=document.querySelector('#mRecette .modal-title');
+  if(title)title.textContent='✏️ Corriger la recette';
+  const btn=document.querySelector('#mRecette .btn-green');
+  if(btn){btn.textContent='Enregistrer la correction';btn.onclick=()=>saveRecetteEdit(id);}
+  openM('mRecette');
+}
+window.editRecette=editRecette;
+
+async function saveRecetteEdit(id){
+  if(_recSaving){toast('Enregistrement en cours…','info');return;}
+  _recSaving=true;
+  try{
+    const r=recettes.find(x=>x.id===id);
+    if(!r){toast('Recette introuvable','err');return;}
+    const date=document.getElementById('mRDate').value;
+    const pdv=document.getElementById('mRPDV').value;
+    const canal=document.getElementById('mRCanal').value;
+    const montant=parseFloat(document.getElementById('mRMontant').value);
+    if(!date||!pdv||!canal||!montant){toast('Champs obligatoires manquants','err');return;}
+    // Historique de correction
+    r._corrections=r._corrections||[];
+    r._corrections.push({
+      par:currentUser.nom,
+      le:new Date().toISOString(),
+      avant:{date:r.date,pdv:r.pdv,canal:r.canal,montant:r.montant,type:r.type}
+    });
+    // Appliquer les corrections
+    r.date=date;
+    r.heure=document.getElementById('mRHeure').value;
+    r.pdv=pdv;
+    r.canal=canal;
+    r.montant=montant;
+    r.type=document.getElementById('mRType').value;
+    r.ref=document.getElementById('mRRef').value;
+    r.notes=document.getElementById('mRNotes').value;
+    r.corrigePar=currentUser.nom;
+    r.corrigeLe=new Date().toISOString();
+    await saveItem('recettes',r);
+    saveLocal();
+    // Remettre le modal en mode création pour la prochaine ouverture
+    const title=document.querySelector('#mRecette .modal-title');
+    if(title)title.textContent='+ Nouvelle recette';
+    const btn=document.querySelector('#mRecette .btn-green');
+    if(btn){btn.textContent='Enregistrer';btn.onclick=saveRecette;}
+    closeM('mRecette');
+    toast(`✅ Recette corrigée — ${fmtD(date)} · ${fmt(montant)} ${DEVISE}`);
+    renderRecettes();renderDashboard();
+  } finally { _recSaving=false; }
+}
+window.saveRecetteEdit=saveRecetteEdit;
 
 // ── SMS/WhatsApp parser (tous PDV) ────────────────────
 function openSMSModal(){
@@ -842,8 +918,9 @@ function renderVersements(){
       <td>${statutBadge(v.statut)}</td>
       <td style="font-size:.75rem;color:var(--text2)">${v.saisie||'—'}</td>
       <td style="display:flex;gap:4px">
-        ${v.statut==='en attente'?`<button class="btn btn-ghost btn-xs" onclick="confirmerV('${v.id}')">✓</button>`:''}
-        ${currentUser.role==='admin'?`<button class="btn btn-red btn-xs" onclick="delVers('${v.id}')">✕</button>`:''}
+        ${v.statut==='en attente'?`<button class="btn btn-ghost btn-xs" onclick="confirmerV('${v.id}')" title="Valider">✓</button>`:''}
+        ${currentUser.role==='admin'?`<button class="btn btn-ghost btn-xs" onclick="editVersement('${v.id}')" title="Corriger">✏️</button>`:''}
+        ${currentUser.role==='admin'?`<button class="btn btn-red btn-xs" onclick="delVers('${v.id}')" title="Supprimer">✕</button>`:''}
       </td>
     </tr>`;
   }).join('');
@@ -1090,9 +1167,70 @@ async function delVers(id){
 }
 window.delVers=delVers;
 
-// ══════════════════════════════════════════════════════
-// CLÔTURE DE CAISSE
-// ══════════════════════════════════════════════════════
+// ── Edition versement (admin) ─────────────────────────
+function editVersement(id){
+  const v=versements.find(x=>x.id===id);
+  if(!v)return;
+  if(v.statut==='confirmé'){
+    if(!confirm(`⚠️ Ce versement est déjà CONFIRMÉ — il a crédité un compte.\\nLe modifier peut créer un écart comptable.\\nContinuer quand même ?`))return;
+  }
+  const moisVers=v.date?.slice(0,7);
+  const moisCourant=today().slice(0,7);
+  if(moisVers<moisCourant){
+    if(!confirm(`⚠️ Ce versement date du mois de ${moisVers} (clôturé).\\nModifier quand même ?`))return;
+  }
+  // Ouvrir le modal versement pré-rempli
+  document.getElementById('mVDate').value=v.date||today();
+  document.getElementById('mVPDV').value=v.pdv||'';
+  document.getElementById('mVType').value=v.type||'OM';
+  document.getElementById('mVMontant').value=v.montant||'';
+  document.getElementById('mVRef').value=v.ref||'';
+  document.getElementById('mVFreq').value=v.freq||'quotidien';
+  document.getElementById('mVStatut').value=v.statut||'en attente';
+  if(document.getElementById('mVNotes'))document.getElementById('mVNotes').value=v.notes||'';
+  // Compte destinataire
+  const cptSel=document.getElementById('mVCompte');
+  if(cptSel)cptSel.value=v.compte||'';
+  // Modifier titre et bouton
+  const title=document.querySelector('#mVersement .modal-title');
+  if(title)title.textContent='✏️ Corriger le versement';
+  const btn=document.querySelector('#mVersement .btn-green');
+  if(btn){btn.textContent='Enregistrer la correction';btn.onclick=()=>saveVersementEdit(id);}
+  openM('mVersement');
+}
+window.editVersement=editVersement;
+
+async function saveVersementEdit(id){
+  const v=versements.find(x=>x.id===id);
+  if(!v){toast('Versement introuvable','err');return;}
+  // Historique
+  v._corrections=v._corrections||[];
+  v._corrections.push({par:currentUser.nom,le:new Date().toISOString(),
+    avant:{date:v.date,pdv:v.pdv,type:v.type,montant:v.montant,statut:v.statut}});
+  // Nouvelles valeurs
+  v.date=document.getElementById('mVDate').value;
+  v.pdv=document.getElementById('mVPDV').value;
+  v.type=document.getElementById('mVType').value;
+  v.montant=parseFloat(document.getElementById('mVMontant').value)||v.montant;
+  v.ref=document.getElementById('mVRef').value;
+  v.freq=document.getElementById('mVFreq').value;
+  v.statut=document.getElementById('mVStatut').value;
+  if(document.getElementById('mVNotes'))v.notes=document.getElementById('mVNotes').value;
+  if(document.getElementById('mVCompte')?.value)v.compte=document.getElementById('mVCompte').value;
+  v.corrigePar=currentUser.nom;
+  v.corrigeLe=new Date().toISOString();
+  await saveItem('versements',v);
+  saveLocal();
+  // Remettre modal en mode création
+  const title=document.querySelector('#mVersement .modal-title');
+  if(title)title.textContent='+ Nouveau versement';
+  const btn=document.querySelector('#mVersement .btn-green');
+  if(btn){btn.textContent='Enregistrer';btn.onclick=saveVersement;}
+  closeM('mVersement');
+  toast(`✅ Versement corrigé — ${fmtD(v.date)} · ${fmt(v.montant)} ${DEVISE}`);
+  renderVersements();renderDashboard();
+}
+window.saveVersementEdit=saveVersementEdit;
 function populateCaissiereSelect(){
   const el=document.getElementById('mcCaissiere');if(!el)return;
   el.innerHTML=users.filter(u=>u.actif!==false).map(u=>`<option value="${u.nom}">${u.nom}</option>`).join('')+'<option value="__custom__">✏️ Autre…</option>';
