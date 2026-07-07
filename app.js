@@ -2157,7 +2157,7 @@ function renderRapport(){
         <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--blue)"></div></div>
         <div style="font-size:.68rem;color:var(--text3)">${pct}%</div>
       </div>`}).join('')||'<div style="color:var(--text3)">Aucun versement confirmé</div>'}
-    </div>\`;
+    </div>`;
 }
 window.renderRapport=renderRapport;
 
