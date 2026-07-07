@@ -2163,6 +2163,11 @@ window.renderRapport=renderRapport;
 
 // ── Détail opérations depuis Rapport (modal) ──────────
 function ouvrirDetailRapportPDV(pdvId, debut, fin) {
+  // Toujours afficher depuis le 1er du mois en cours jusqu'à aujourd'hui
+  const debutMoisCourant = today().slice(0,7) + '-01';
+  const finAujourdhui = today();
+  debut = debutMoisCourant;
+  fin = finAujourdhui;
   const pdv = pdvs.find(p => p.id === pdvId);
   const nomPDV = pdv?.nom || pdvId;
   const recF = recettes.filter(r => r.pdv === pdvId && r.date >= debut && r.date <= fin);
@@ -2226,6 +2231,9 @@ function ouvrirDetailRapportPDV(pdvId, debut, fin) {
 window.ouvrirDetailRapportPDV = ouvrirDetailRapportPDV;
 
 function ouvrirDetailRapportCompte(compteId, debut, fin) {
+  // Toujours depuis le 1er du mois en cours
+  debut = today().slice(0,7) + '-01';
+  fin = today();
   const cpt = comptes.find(c => c.id === compteId);
   const nomCpt = cpt?.nom || compteId;
   const verF = versements.filter(v => v.compte === compteId && v.statut === 'confirmé' && v.date >= debut && v.date <= fin);
