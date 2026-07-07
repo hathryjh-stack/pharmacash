@@ -755,10 +755,20 @@ function _detectPDV(txt){
   let bestScore=0;
   pdvs.forEach(p=>{
     const words=normalize(p.nom).split(' ').filter(w=>w.length>2);
-    // Score pondéré par longueur du mot — les mots longs comptent plus
     let score=0;
     words.forEach(w=>{
-      if(loNorm.includes(w)) score+=w.length; // poids = longueur du mot
+      if(loNorm.includes(w)){
+        score+=w.length*2; // correspondance exacte
+      } else {
+        // Tolérance 1 faute de frappe (ex: "nafoum" vs "nafoun")
+        const wLen=w.length;
+        for(let i=0;i<=loNorm.length-wLen;i++){
+          const chunk=loNorm.slice(i,i+wLen);
+          let diff=0;
+          for(let j=0;j<wLen;j++) if(chunk[j]!==w[j]) diff++;
+          if(diff<=1&&wLen>=4){score+=w.length;break;}
+        }
+      }
     });
     if(score>bestScore){bestScore=score;detPDV=p.id;}
   });
@@ -768,8 +778,14 @@ window._detectPDV=_detectPDV;
 function parseSMS(){
   const txt=document.getElementById('smsTxt').value;
   if(!txt.trim()){toast('Colle un SMS ou message WhatsApp','err');return;}
-  const txtNorm=txt.replace(/(\d)\.(\d{3})/g,'$1$2').replace(/(\d)\s(\d{3})/g,'$1$2');
-  const nums=(txtNorm.match(/\d+/g)||[]).map(n=>parseInt(n)).filter(n=>n>100&&n<999999999);
+  // Normaliser les séparateurs de milliers avant extraction du montant
+  const txtNorm=txt
+    .replace(/(\d)\s(\d{3})(?!\d)/g,'$1$2')   // "149 800" -> "149800"
+    .replace(/(\d),(\d{3})(?!\d)/g,'$1$2')      // "149,800" -> "149800"
+    .replace(/(\d)\.(\d{3})(?!\d)/g,'$1$2');   // "149.800" -> "149800"
+  // Exclure les années (2000-2099) et nombres < 500
+  const nums=(txtNorm.match(/\d+/g)||[]).map(n=>parseInt(n))
+    .filter(n=>n>=500&&n<999999999&&!(n>=2000&&n<=2099));
   const montant=nums.length?Math.max(...nums):0;
   const dm=txt.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.]?(\d{2,4})?/);
   if(dm){const[,j,m,y]=dm;const yr=y?(y.length===2?'20'+y:y):new Date().getFullYear();
@@ -782,7 +798,8 @@ function parseSMS(){
   document.getElementById('smsMontant').value=montant||'';
   document.getElementById('smsResult').style.display='block';
   document.getElementById('btnSaveSMS').style.display='inline-block';
-  toast('Données extraites — vérifie et confirme');
+  const nomPDV=pdvs.find(p=>p.id===document.getElementById('smsPDV').value)?.nom||'?';
+  toast(`Extrait — ${nomPDV} · ${fmt(montant)} ${DEVISE} — Vérifie avant d'enregistrer`);
 }
 window.parseSMS=parseSMS;
 async function saveSMSRecette(){
@@ -853,9 +870,13 @@ window.openSMSVersModal=openSMSVersModal;
 function parseSMSVers(){
   const txt=document.getElementById('smsTxtVers').value;
   if(!txt.trim()){toast('Colle un SMS ou message WhatsApp','err');return;}
-  // Montant : reconnaît 178.300 ou 178 300 comme 178300
-  const txtNorm=txt.replace(/(\d)\.(\d{3})/g,'$1$2').replace(/(\d)\s(\d{3})/g,'$1$2');
-  const nums=(txtNorm.match(/\d+/g)||[]).map(n=>parseInt(n)).filter(n=>n>100&&n<999999999);
+  // Montant : reconnaît 149,800 ou 149.800 ou 149 800 comme 149800
+  const txtNorm=txt
+    .replace(/(\d)\s(\d{3})(?!\d)/g,'$1$2')
+    .replace(/(\d),(\d{3})(?!\d)/g,'$1$2')
+    .replace(/(\d)\.(\d{3})(?!\d)/g,'$1$2');
+  const nums=(txtNorm.match(/\d+/g)||[]).map(n=>parseInt(n))
+    .filter(n=>n>=500&&n<999999999&&!(n>=2000&&n<=2099));
   const montant=nums.length?Math.max(...nums):0;
   // Date
   const dm=txt.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.]?(\d{2,4})?/);
