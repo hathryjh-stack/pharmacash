@@ -915,6 +915,13 @@ function renderVersements(){
       <td style="font-size:.78rem;color:var(--text2)">${cpt?cpt.nom:'—'}</td>
       <td style="font-size:.75rem;color:var(--text2)">${v.ref||'—'}</td>
       <td class="amt pos">${fmt(v.montant)}</td>
+      <td style="font-size:.75rem">
+        ${(v.fraisOp||v.fraisTimbre)?`
+          <span style="color:var(--amber)">−${fmt((v.fraisOp||0)+(v.fraisTimbre||0))}</span>
+          <div style="font-size:.65rem;color:var(--text3)">${v.fraisOp?`Op: ${fmt(v.fraisOp)} `:''} ${v.fraisTimbre?`Tmb: ${fmt(v.fraisTimbre)}`:''}</div>
+          <span style="color:var(--green);font-weight:700">Net: ${fmt(v.montant-(v.fraisOp||0)-(v.fraisTimbre||0))}</span>
+        `:'<span style="color:var(--text3)">—</span>'}
+      </td>
       <td>${statutBadge(v.statut)}</td>
       <td style="font-size:.75rem;color:var(--text2)">${v.saisie||'—'}</td>
       <td style="display:flex;gap:4px">
@@ -1064,7 +1071,7 @@ function renderLignesVersement(){
         </div>
       </div>
       <div class="fg2">
-        <div class="fg"><label>Montant (${DEVISE}) *</label>
+        <div class="fg"><label>Montant brut versé (${DEVISE}) *</label>
           <input type="number" value="${l.montant||''}" placeholder="0" min="0"
             oninput="updateLigneMontant(${i},this.value)"
             onchange="updateLigneMontant(${i},this.value)">
@@ -1074,13 +1081,41 @@ function renderLignesVersement(){
             oninput="updateLigneRef(${i},this.value)">
         </div>
       </div>
+      <div class="fg2">
+        <div class="fg"><label>Frais opérateur (${DEVISE})</label>
+          <input type="number" value="${l.fraisOp||''}" placeholder="0" min="0"
+            oninput="updateLigneFraisOp(${i},this.value)"
+            style="border-color:var(--amber)">
+        </div>
+        <div class="fg"><label>Frais timbre (${DEVISE})</label>
+          <input type="number" value="${l.fraisTimbre||''}" placeholder="0" min="0"
+            oninput="updateLigneFraisTimbre(${i},this.value)"
+            style="border-color:var(--amber)">
+        </div>
+      </div>
+      <div style="background:var(--surface3);border-radius:6px;padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.75rem;color:var(--text2)">💰 Montant net crédité au compte</span>
+        <span style="font-weight:800;font-size:1rem;color:${((l.montant||0)-(l.fraisOp||0)-(l.fraisTimbre||0))>=0?'var(--green)':'var(--red)'}">
+          ${fmt((l.montant||0)-(l.fraisOp||0)-(l.fraisTimbre||0))} ${DEVISE}
+        </span>
+      </div>
       ${lignesVersement.length>1?`<button onclick="removeLigneVersement(${i})" style="position:absolute;top:8px;right:8px;background:var(--red-dim);color:var(--red);border:none;border-radius:6px;padding:2px 8px;cursor:pointer;font-size:.75rem">✕</button>`:''}
     </div>`;
   }).join('');
   updateTotalVers();
 }
+function updateLigneFraisOp(i,val){
+  lignesVersement[i].fraisOp=parseFloat(val)||0;
+  renderLignesVersement();
+}
+window.updateLigneFraisOp=updateLigneFraisOp;
+function updateLigneFraisTimbre(i,val){
+  lignesVersement[i].fraisTimbre=parseFloat(val)||0;
+  renderLignesVersement();
+}
+window.updateLigneFraisTimbre=updateLigneFraisTimbre;
 function addLigneVersement(){
-  lignesVersement.push({type:'OM',compte:comptes[0]?.id||'',montant:0,ref:''});
+  lignesVersement.push({type:'OM',compte:comptes[0]?.id||'',montant:0,fraisOp:0,fraisTimbre:0,ref:''});
   renderLignesVersement();
 }
 window.addLigneVersement=addLigneVersement;
@@ -1112,10 +1147,14 @@ async function saveVersements(){
     const doublon=versements.find(v=>v.pdv===pdv&&v.date===date&&Math.abs((v.montant||0)-totalNouv)<=totalNouv*0.01);
     if(doublon&&!confirm(`⚠️ Doublon détecté !\nUn versement identique existe déjà :\n${fmtD(doublon.date)} — ${pdvs.find(p=>p.id===pdv)?.nom||pdv} — ${fmt(doublon.montant)} ${DEVISE} — Statut: ${doublon.statut}\n\nConfirmer quand même ?`)){_versSaving=false;return;}
     for(const l of valides){
+      const fraisOp=l.fraisOp||0;
+      const fraisTimbre=l.fraisTimbre||0;
+      const montantNet=Math.max(0,l.montant-fraisOp-fraisTimbre);
       const item={id:uid(),date,pdv,freq,type:l.type,compte:l.compte,ref:l.ref||'',
-        montant:l.montant,statut,saisie,notes:'',ts:Date.now()};
+        montant:l.montant,montantNet,fraisOp,fraisTimbre,
+        statut,saisie,notes:'',ts:Date.now()};
       versements.push(item);
-      if(statut==='confirmé')await crediterCompte(l.compte,l.montant,pdv,l.ref,date);
+      if(statut==='confirmé')await crediterCompte(l.compte,l.montant,pdv,l.ref,date,l.type,fraisOp,fraisTimbre);
       await saveItem('versements',item);
     }
     closeM('mVers2');toast(`${valides.length} versement(s) enregistré(s) ✓`);
@@ -1132,32 +1171,43 @@ window.onVPDVChange=onVPDVChange;
 
 const FRAIS_MM_PCT=0.01; // 1% frais opérateur mobile money
 
-async function crediterCompte(compteId,montant,pdvId,ref,date,typeVers=''){
+async function crediterCompte(compteId,montant,pdvId,ref,date,typeVers='',fraisOpManuel=null,fraisTimbreManuel=null){
   const c=comptes.find(x=>x.id===compteId);if(!c)return;
-  const isMM_vers=['OM','MTN','WAVE','MOOV'].includes(typeVers);
-  const frais=isMM_vers?Math.round(montant*FRAIS_MM_PCT):0;
-  const montantNet=montant-frais;
+  const isMM=['OM','MTN','WAVE','MOOV'].includes(typeVers);
+  // Priorité aux frais saisis manuellement — sinon calcul auto 1% pour MM
+  const fraisOp = fraisOpManuel!=null ? fraisOpManuel : (isMM?Math.round(montant*FRAIS_MM_PCT):0);
+  const fraisTimbre = fraisTimbreManuel!=null ? fraisTimbreManuel : 0;
+  const totalFrais = fraisOp + fraisTimbre;
+  const montantNet = Math.max(0, montant - totalFrais);
   // Crédite le montant net
   c.solde=(c.solde||0)+montantNet;await saveItem('comptes',c);
   const pdvNom=pdvs.find(p=>p.id===pdvId)?.nom||pdvId;
+  const labelFrais=totalFrais>0?` (net — frais op.: ${fmt(fraisOp)}, timbre: ${fmt(fraisTimbre)})`:'';
   const m={id:uid(),date,compte:compteId,type:'entrée',rubrique:'Versement PDV',
-    libelle:`Versement ${pdvNom}${frais?` (net après frais ${typeVers} 1%)`:''}`,
-    ref,montant:montantNet,montantBrut:montant,frais,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
+    libelle:`Versement ${pdvNom}${labelFrais}`,
+    ref,montant:montantNet,montantBrut:montant,fraisOp,fraisTimbre,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
   mvts.push(m);await saveItem('mvts',m);
-  // Enregistre les frais comme sortie si MM
-  if(frais>0){
-    const mFrais={id:uid(),date,compte:compteId,type:'sortie',rubrique:'Frais opérateur MM',
-      libelle:`Frais ${typeVers} 1% — ${pdvNom}`,
-      ref,montant:frais,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
-    mvts.push(mFrais);await saveItem('mvts',mFrais);
-    // Débite aussi le solde pour les frais
-    c.solde=c.solde-frais;await saveItem('comptes',c);
+  // Enregistre frais opérateur comme sortie si > 0
+  if(fraisOp>0){
+    c.solde=c.solde-fraisOp;await saveItem('comptes',c);
+    const mFraisOp={id:uid(),date,compte:compteId,type:'sortie',rubrique:'Frais opérateur MM',
+      libelle:`Frais opérateur ${typeVers} — ${pdvNom}`,
+      ref,montant:fraisOp,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
+    mvts.push(mFraisOp);await saveItem('mvts',mFraisOp);
+  }
+  // Enregistre frais timbre comme sortie si > 0
+  if(fraisTimbre>0){
+    c.solde=c.solde-fraisTimbre;await saveItem('comptes',c);
+    const mTimbre={id:uid(),date,compte:compteId,type:'sortie',rubrique:'Taxe timbre',
+      libelle:`Frais timbre fiscal — ${pdvNom}`,
+      ref,montant:fraisTimbre,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
+    mvts.push(mTimbre);await saveItem('mvts',mTimbre);
   }
 }
 async function confirmerV(id){
   const v=versements.find(x=>x.id===id);if(!v||v.statut==='confirmé')return;
   v.statut='confirmé';
-  await crediterCompte(v.compte,v.montant,v.pdv,v.ref,v.date,v.type);
+  await crediterCompte(v.compte,v.montant,v.pdv,v.ref,v.date,v.type,v.fraisOp||null,v.fraisTimbre||null);
   await saveItem('versements',v);renderVersements();toast('Confirmé ✓');renderDashboard();
 }
 window.confirmerV=confirmerV;
@@ -2088,14 +2138,186 @@ function renderRapport(){
         ${Object.entries(byCpt).sort((a,b)=>b[1]-a[1]).map(([id,v])=>{const cpt=comptes.find(c=>c.id===id);const pct=totC>0?Math.round(v/totC*100):0;return`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:.78rem;color:var(--text2)">${cpt?cpt.nom:id}</span><span class="amt pos">${fmt(v)}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--blue)"></div></div><div style="font-size:.68rem;color:var(--text3)">${pct}%</div></div>`}).join('')||'<div style="color:var(--text3)">Aucun versement confirmé</div>'}
       </div>
     </div>
-    <div class="card" style="margin-top:14px"><div class="card-title" style="margin-bottom:12px">Performance par point de vente</div>
+    <div class="card" style="margin-top:14px"><div class="card-title" style="margin-bottom:4px">Performance par point de vente</div>
+      <div style="font-size:.72rem;color:var(--text3);margin-bottom:10px">🖱 Cliquez sur une ligne pour voir le détail des opérations</div>
       <div class="tbl-wrap"><table><thead><tr><th>PDV</th><th>Type</th><th>Recettes</th><th>Versé</th><th>Confirmé</th><th>Taux</th></tr></thead>
-      <tbody>${Object.values(byPDV).map(p=>{const taux=p.rec>0?Math.round(p.verC/p.rec*100):0;const col=taux>=80?'var(--green)':taux>=50?'var(--amber)':'var(--red)';return`<tr><td><b>${p.nom}</b></td><td><span class="badge ${p.type==='principale'?'bg':'bb'}">${p.type}</span></td><td class="amt pos">${fmt(p.rec)}</td><td class="amt">${fmt(p.ver)}</td><td class="amt pos">${fmt(p.verC)}</td><td><span style="color:${col};font-weight:700">${taux}%</span><div class="prog-bar"><div class="prog-fill" style="width:${taux}%;background:${col}"></div></div></td></tr>`}).join('')}</tbody></table></div>
-    </div>`;
+      <tbody>${Object.entries(byPDV).map(([pdvId,p])=>{const taux=p.rec>0?Math.round(p.verC/p.rec*100):0;const col=taux>=80?'var(--green)':taux>=50?'var(--amber)':'var(--red)';return`<tr style="cursor:pointer" onclick="ouvrirDetailRapportPDV('${pdvId}','${debut}','${fin}')" title="Voir le détail de ${p.nom}">
+        <td><b>${p.nom}</b></td>
+        <td><span class="badge ${p.type==='principale'?'bg':'bb'}">${p.type}</span></td>
+        <td class="amt pos">${fmt(p.rec)}</td>
+        <td class="amt">${fmt(p.ver)}</td>
+        <td class="amt pos">${fmt(p.verC)}</td>
+        <td><span style="color:${col};font-weight:700">${taux}%</span><div class="prog-bar"><div class="prog-fill" style="width:${taux}%;background:${col}"></div></div></td>
+      </tr>`}).join('')}</tbody></table></div>
+    </div>
+    <div class="card" style="margin-top:14px"><div class="card-title" style="margin-bottom:4px">Versements par compte destinataire</div>
+      <div style="font-size:.72rem;color:var(--text3);margin-bottom:10px">🖱 Cliquez sur un compte pour voir ses versements</div>
+      ${Object.entries(byCpt).sort((a,b)=>b[1]-a[1]).map(([id,v])=>{const cpt=comptes.find(c=>c.id===id);const pct=totC>0?Math.round(v/totC*100):0;return`<div style="margin-bottom:10px;cursor:pointer;padding:6px 8px;border-radius:6px;transition:background .15s" onclick="ouvrirDetailRapportCompte('${id}','${debut}','${fin}')" title="Voir versements vers ${cpt?cpt.nom:id}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:.78rem;color:var(--text2)">${cpt?cpt.nom:id}</span><span class="amt pos">${fmt(v)}</span></div>
+        <div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--blue)"></div></div>
+        <div style="font-size:.68rem;color:var(--text3)">${pct}%</div>
+      </div>`}).join('')||'<div style="color:var(--text3)">Aucun versement confirmé</div>'}
+    </div>\`;
 }
 window.renderRapport=renderRapport;
 
-// ══════════════════════════════════════════════════════
+// ── Détail opérations depuis Rapport (modal) ──────────
+function ouvrirDetailRapportPDV(pdvId, debut, fin) {
+  const pdv = pdvs.find(p => p.id === pdvId);
+  const nomPDV = pdv?.nom || pdvId;
+  const recF = recettes.filter(r => r.pdv === pdvId && r.date >= debut && r.date <= fin);
+  const verF = versements.filter(v => v.pdv === pdvId && v.date >= debut && v.date <= fin);
+  const totR = recF.reduce((s,r) => s+(r.montant||0), 0);
+  const totV = verF.reduce((s,v) => s+(v.montant||0), 0);
+  const totC = verF.filter(v=>v.statut==='confirmé').reduce((s,v) => s+(v.montant||0), 0);
+
+  const recHtml = recF.length
+    ? recF.sort((a,b)=>b.date.localeCompare(a.date)).map((r,i) => `
+      <tr>
+        <td style="color:var(--text3);font-size:.68rem;text-align:right">${i+1}</td>
+        <td>${fmtD(r.date)}</td>
+        <td>${mmBadge(r.canal)}</td>
+        <td><span class="badge bb" style="font-size:.65rem">${r.type||'—'}</span></td>
+        <td class="amt pos">${fmt(r.montant)}</td>
+        <td style="font-size:.72rem;color:var(--text3)">${r.ref||'—'}</td>
+        <td style="font-size:.72rem;color:var(--text3)">${r.saisie||'—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:14px">Aucune recette</td></tr>';
+
+  const verHtml = verF.length
+    ? verF.sort((a,b)=>b.date.localeCompare(a.date)).map((v,i) => `
+      <tr>
+        <td style="color:var(--text3);font-size:.68rem;text-align:right">${i+1}</td>
+        <td>${fmtD(v.date)}</td>
+        <td>${mmBadge(v.type)}</td>
+        <td class="amt pos">${fmt(v.montant)}</td>
+        <td>${(v.fraisOp||v.fraisTimbre)?`<span style="color:var(--amber);font-size:.75rem">−${fmt((v.fraisOp||0)+(v.fraisTimbre||0))}</span>`:'—'}</td>
+        <td>${statutBadge(v.statut)}</td>
+        <td style="font-size:.72rem;color:var(--text3)">${comptes.find(c=>c.id===v.compte)?.nom||'—'}</td>
+        <td style="font-size:.72rem;color:var(--text3)">${v.ref||'—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:14px">Aucun versement</td></tr>';
+
+  const html = `
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+      <div class="stat-card green" style="flex:1;min-width:120px"><div class="stat-lbl">Recettes</div><div class="stat-val green">${fmt(totR)}</div></div>
+      <div class="stat-card blue" style="flex:1;min-width:120px"><div class="stat-lbl">Versé total</div><div class="stat-val blue">${fmt(totV)}</div></div>
+      <div class="stat-card purple" style="flex:1;min-width:120px"><div class="stat-lbl">Confirmé</div><div class="stat-val purple">${fmt(totC)}</div></div>
+      <div class="stat-card ${totR>0?'amber':'red'}" style="flex:1;min-width:120px"><div class="stat-lbl">Taux versement</div><div class="stat-val amber">${totR>0?Math.round(totC/totR*100):0}%</div></div>
+    </div>
+    <div style="font-weight:700;color:var(--cyan);margin-bottom:6px;font-size:.85rem">📋 Recettes (${recF.length})</div>
+    <div class="tbl-wrap" style="margin-bottom:14px">
+      <table><thead><tr><th>#</th><th>Date</th><th>Canal</th><th>Type</th><th>Montant</th><th>Réf.</th><th>Saisi par</th></tr></thead>
+      <tbody>${recHtml}</tbody>
+      <tr style="background:var(--surface2);font-weight:700"><td colspan="4" style="text-align:right;padding:6px">TOTAL</td><td class="amt pos">${fmt(totR)}</td><td colspan="2"></td></tr>
+      </table>
+    </div>
+    <div style="font-weight:700;color:var(--blue);margin-bottom:6px;font-size:.85rem">💸 Versements (${verF.length})</div>
+    <div class="tbl-wrap">
+      <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Brut</th><th>Frais</th><th>Statut</th><th>Compte</th><th>Réf.</th></tr></thead>
+      <tbody>${verHtml}</tbody>
+      <tr style="background:var(--surface2);font-weight:700"><td colspan="3" style="text-align:right;padding:6px">TOTAL</td><td class="amt pos">${fmt(totV)}</td><td></td><td class="amt pos">${fmt(totC)} confirmé</td><td colspan="2"></td></tr>
+      </table>
+    </div>`;
+
+  // Afficher dans un modal générique
+  afficherModalDetail(`📊 Détail — ${nomPDV} — ${fmtD(debut)} au ${fmtD(fin)}`, html);
+}
+window.ouvrirDetailRapportPDV = ouvrirDetailRapportPDV;
+
+function ouvrirDetailRapportCompte(compteId, debut, fin) {
+  const cpt = comptes.find(c => c.id === compteId);
+  const nomCpt = cpt?.nom || compteId;
+  const verF = versements.filter(v => v.compte === compteId && v.statut === 'confirmé' && v.date >= debut && v.date <= fin);
+  const totV = verF.reduce((s,v) => s+(v.montant||0), 0);
+
+  const verHtml = verF.length
+    ? verF.sort((a,b)=>b.date.localeCompare(a.date)).map((v,i) => {
+        const nomPDV = pdvs.find(p=>p.id===v.pdv)?.nom || v.pdv;
+        return `<tr>
+          <td style="color:var(--text3);font-size:.68rem;text-align:right">${i+1}</td>
+          <td>${fmtD(v.date)}</td>
+          <td>${pdvBadge(v.pdv)}</td>
+          <td>${mmBadge(v.type)}</td>
+          <td class="amt pos">${fmt(v.montant)}</td>
+          <td>${(v.fraisOp||v.fraisTimbre)?`<span style="color:var(--amber);font-size:.75rem">−${fmt((v.fraisOp||0)+(v.fraisTimbre||0))}</span>`:'—'}</td>
+          <td style="font-size:.72rem;color:var(--text3)">${v.ref||'—'}</td>
+          <td style="font-size:.72rem;color:var(--text3)">${v.saisie||'—'}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="8" style="text-align:center;color:var(--text3);padding:14px">Aucun versement confirmé</td></tr>';
+
+  const html = `
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <div class="stat-card purple" style="flex:1"><div class="stat-lbl">Total confirmé</div><div class="stat-val purple">${fmt(totV)}</div></div>
+      <div class="stat-card blue" style="flex:1"><div class="stat-lbl">Nb versements</div><div class="stat-val blue">${verF.length}</div></div>
+    </div>
+    <div class="tbl-wrap">
+      <table><thead><tr><th>#</th><th>Date</th><th>PDV</th><th>Type</th><th>Montant</th><th>Frais</th><th>Réf.</th><th>Saisi par</th></tr></thead>
+      <tbody>${verHtml}</tbody>
+      <tr style="background:var(--surface2);font-weight:700"><td colspan="4" style="text-align:right;padding:6px">TOTAL CRÉDITÉ</td><td class="amt pos">${fmt(totV)}</td><td colspan="3"></td></tr>
+      </table>
+    </div>`;
+
+  afficherModalDetail(`💰 Versements → ${nomCpt} — ${fmtD(debut)} au ${fmtD(fin)}`, html);
+}
+window.ouvrirDetailRapportCompte = ouvrirDetailRapportCompte;
+
+// ── Modal générique de détail ─────────────────────────
+function afficherModalDetail(titre, contenu) {
+  // Créer ou réutiliser le modal de détail
+  let modal = document.getElementById('modalDetailRapport');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'modalDetailRapport';
+    modal.className = 'modal-ov';
+    modal.innerHTML = `
+      <div class="modal" style="max-width:900px;max-height:90vh;overflow-y:auto">
+        <div class="modal-hdr">
+          <div class="modal-title" id="modalDetailTitre"></div>
+          <button class="close-x" onclick="document.getElementById('modalDetailRapport').style.display='none'">✕</button>
+        </div>
+        <div class="modal-body" id="modalDetailCorps"></div>
+        <div style="padding:12px 20px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border)">
+          <button class="btn btn-ghost btn-sm" onclick="imprimerDetailRapport()">🖨️ Imprimer</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('modalDetailRapport').style.display='none'">Fermer</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', e => { if(e.target===modal) modal.style.display='none'; });
+  }
+  document.getElementById('modalDetailTitre').textContent = titre;
+  document.getElementById('modalDetailCorps').innerHTML = contenu;
+  modal.style.display = 'flex';
+}
+window.afficherModalDetail = afficherModalDetail;
+
+function imprimerDetailRapport() {
+  const titre = document.getElementById('modalDetailTitre')?.textContent || 'Détail';
+  const corps = document.getElementById('modalDetailCorps')?.innerHTML || '';
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${titre}</title>
+  <style>
+    @page{size:A4;margin:12mm}
+    body{font-family:Arial,sans-serif;font-size:9pt;color:#111}
+    h2{font-size:11pt;color:#00C47A;border-bottom:2px solid #00C47A;padding-bottom:6px}
+    table{width:100%;border-collapse:collapse;margin-bottom:12px}
+    th{background:#f5f5f5;padding:5px 8px;text-align:left;border:1px solid #ddd;font-size:7.5pt;text-transform:uppercase}
+    td{padding:5px 8px;border:1px solid #eee;font-size:8.5pt}
+    tr:nth-child(even) td{background:#fafafa}
+    .stat-card{display:inline-block;border:1px solid #eee;border-radius:6px;padding:8px 14px;margin:4px;text-align:center}
+    .stat-lbl{font-size:7pt;color:#999;text-transform:uppercase}
+    .stat-val{font-size:12pt;font-weight:800;color:#00C47A}
+    .tbl-wrap{overflow:visible}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body>
+  <h2>${titre}</h2>
+  ${corps}
+  <script>window.onload=()=>window.print()<\/script>
+  </body></html>`);
+  w.document.close();
+}
+window.imprimerDetailRapport = imprimerDetailRapport;
 // RELEVÉS PÉRIODIQUES — Print/PDF/Excel/Word (v4)
 // ══════════════════════════════════════════════════════
 
