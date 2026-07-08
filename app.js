@@ -1465,6 +1465,47 @@ async function validerToutesClot(){
   renderCaisse();toast('Toutes validées ✓');
 }
 window.validerToutesClot=validerToutesClot;
+
+// ── Déverrouillage clôture (admin) ───────────────────
+async function deverrouillerClot(id){
+  const c=clotures.find(x=>x.id===id);if(!c)return;
+  if(!confirm(`Déverrouiller la clôture de "${c.caissiere}" (${c.vacation}) du ${fmtD(c.date)} ?\n\nCela permettra de corriger la date.`))return;
+  c.statut='ouvert';
+  c.deverrouille_par=currentUser.nom;
+  c.deverrouille_ts=Date.now();
+  await saveItem('clotures',c);
+  renderCaisse();
+  toast(`Clôture déverrouillée — tu peux maintenant corriger la date`,'info');
+}
+window.deverrouillerClot=deverrouillerClot;
+
+// ── Correction date d'une clôture (admin) ────────────
+async function corrigerDateClot(id){
+  const c=clotures.find(x=>x.id===id);if(!c)return;
+  const nouvDate=prompt(`Corriger la date de la clôture "${c.caissiere} — ${c.vacation}"\n\nDate actuelle : ${fmtD(c.date)}\nNouvelle date (format AAAA-MM-JJ) :`,c.date);
+  if(!nouvDate||nouvDate===c.date)return;
+  // Valider le format
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(nouvDate)){toast('Format invalide — utilise AAAA-MM-JJ','err');return;}
+  // Historique
+  c._correctionsDates=c._correctionsDates||[];
+  c._correctionsDates.push({avant:c.date,apres:nouvDate,par:currentUser.nom,le:new Date().toISOString()});
+  c.date=nouvDate;
+  c.dateCorrigee=true;
+  c.dateCorrigeePar=currentUser.nom;
+  c.dateCorrigeeLe=new Date().toISOString();
+  await saveItem('clotures',c);
+  // Corriger aussi les versements liés à cette clôture
+  const versLies=versements.filter(v=>v.notes&&v.notes.includes(c.caissiere)&&v.notes.includes(c.vacation));
+  for(const v of versLies){
+    v._dateOrig=v._dateOrig||v.date;
+    v.date=nouvDate;
+    await saveItem('versements',v);
+  }
+  saveLocal();
+  toast(`✅ Date corrigée → ${fmtD(nouvDate)}${versLies.length?` + ${versLies.length} versement(s) mis à jour`:''}`)  ;
+  renderCaisse();
+}
+window.corrigerDateClot=corrigerDateClot;
 async function delClot(id){
   if(!confirm('Supprimer ?'))return;
   clotures=clotures.filter(c=>c.id!==id);await delItem('clotures',id);renderCaisse();toast('Supprimé','info');
@@ -1504,6 +1545,8 @@ function renderCaisse(){
     <div class="cc-total-row"><span>Total versé</span><span style="color:var(--green)">${fmt(c.totalVerse)}</span></div>
     <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
       ${currentUser.role==='admin'&&c.statut==='ouvert'?`<button class="btn btn-ghost btn-xs" onclick="validerClot('${c.id}')">✓ Valider</button>`:''}
+      ${currentUser.role==='admin'&&c.statut==='validé'?`<button class="btn btn-ghost btn-xs" onclick="deverrouillerClot('${c.id}')" title="Déverrouiller" style="color:var(--amber)">🔓</button>`:''}
+      ${currentUser.role==='admin'&&c.statut==='ouvert'?`<button class="btn btn-ghost btn-xs" onclick="corrigerDateClot('${c.id}')" title="Corriger la date" style="color:var(--cyan)">📅</button>`:''}
       <button class="btn btn-ghost btn-xs" onclick="openCaisseModal('${c.id}')">✏️</button>
       ${currentUser.role==='admin'?`<button class="btn btn-red btn-xs" onclick="delClot('${c.id}')">✕</button>`:''}
     </div></div>`;
@@ -1520,6 +1563,8 @@ function renderCaisse(){
     <td style="font-size:.75rem;color:var(--text2)">${c.valide_par||'—'}</td>
     <td style="display:flex;gap:4px">
       ${currentUser.role==='admin'&&c.statut==='ouvert'?`<button class="btn btn-ghost btn-xs" onclick="validerClot('${c.id}')">✓</button>`:''}
+      ${currentUser.role==='admin'&&c.statut==='validé'?`<button class="btn btn-ghost btn-xs" onclick="deverrouillerClot('${c.id}')" style="color:var(--amber)" title="Déverrouiller">🔓</button>`:''}
+      ${currentUser.role==='admin'&&c.statut==='ouvert'?`<button class="btn btn-ghost btn-xs" onclick="corrigerDateClot('${c.id}')" style="color:var(--cyan)" title="Corriger date">📅</button>`:''}
       <button class="btn btn-ghost btn-xs" onclick="openCaisseModal('${c.id}')">✏️</button>
       ${currentUser.role==='admin'?`<button class="btn btn-red btn-xs" onclick="delClot('${c.id}')">✕</button>`:''}
     </td></tr>`;
