@@ -319,7 +319,7 @@ function startApp(){
 // ══════════════════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════════════════
-const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','petitecaisse','caissiere','ran','admin','utilisateurs'];
+const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','caisseprinc','petitecaisse','caissiere','ran','admin','utilisateurs'];
 function goTo(name){
   PAGES.forEach(p=>document.getElementById('pg-'+p)?.classList.remove('active'));
   document.getElementById('pg-'+name)?.classList.add('active');
@@ -330,6 +330,7 @@ function goTo(name){
       (name==='versements'&&t.includes('versement'))||(name==='caisse'&&t.includes('clôture'))||
       (name==='banques'&&t.includes('banques'))||(name==='rapport'&&t.includes('rapport'))||
       (name==='releves'&&t.includes('relevé'))||(name==='petitecaisse'&&t.includes('petite'))||
+      (name==='caisseprinc'&&t.includes('principale'))||
       (name==='caissiere'&&t.includes('caissière'))||(name==='ran'&&t.includes('nouveaux'))||(name==='admin'&&t.includes('config'))||
       (name==='utilisateurs'&&t.includes('utilis')));
   });
