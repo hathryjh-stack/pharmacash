@@ -370,6 +370,8 @@ function populateSelects(){
   // RAN — sélecteur mois (défaut = mois courant)
   const ranPer=document.getElementById('ranPeriode');
   if(ranPer&&!ranPer.value)ranPer.value=today().slice(0,7);
+  // Vacations — peupler le select clôture
+  populateVacationSelect();
 }
 
 // ══════════════════════════════════════════════════════
