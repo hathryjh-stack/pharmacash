@@ -424,6 +424,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           <div class="inner-tab" data-tab="mm-tetes" onclick="adminTab('mm-tetes')">🔗 MM Têtes de pont</div>
           <div class="inner-tab" data-tab="mm-pdv" onclick="adminTab('mm-pdv')">📱 MM par PDV</div>
           <div class="inner-tab" data-tab="caissieresdb" onclick="adminTab('caissieresdb')">👤 Caissières</div>
+          <div class="inner-tab" data-tab="vacations" onclick="adminTab('vacations')">⏰ Vacations</div>
         </div>
         <div id="adm-pdv"><div class="card"><div class="card-header"><span class="card-title">Points de vente & Dépôts</span><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="imprimerConfig('pdv')">🖨️ Imprimer</button><button class="btn btn-green btn-sm" onclick="openPDVModal()">+ Ajouter</button></div></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Type</th><th>Responsable</th><th>Périodicité</th><th>N° MM locaux</th><th>Compte défaut</th><th></th></tr></thead><tbody id="pdvTbody"></tbody></table></div></div></div>
         <div id="adm-banques" style="display:none"><div class="card"><div class="card-header"><span class="card-title">Banques & Caisses</span><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="imprimerConfig('banques')">🖨️ Imprimer</button><button class="btn btn-amber btn-sm" onclick="openImportSoldes()">📥 Importer soldes Excel</button><button class="btn btn-green btn-sm" onclick="openCompteModal()">+ Ajouter</button></div></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Opérateur</th><th>N° Compte / RIB</th><th>Notes / IBAN</th><th>Solde actuel</th><th>Statut</th><th></th></tr></thead><tbody id="cptTbody"></tbody></table></div></div></div>
@@ -446,25 +447,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           </div>
         </div>
 
-        <!-- Modal caissière -->
-        <div class="modal-ov" id="mCaissiere" style="display:none">
-          <div class="modal" style="max-width:480px">
-            <div class="modal-hdr"><div class="modal-title">👤 Caissière</div><button class="close-x" onclick="closeM('mCaissiere')">✕</button></div>
-            <div class="modal-body">
-              <div class="fg"><label>Nom complet *</label><input type="text" id="mCaissNom" placeholder="Ex: DIGBEU EMMANUELLA"></div>
-              <div class="fg"><label>PDV rattaché</label><select id="mCaissPDV"><option value="">— Tous PDV —</option></select></div>
-              <div class="fg"><label>Téléphone</label><input type="tel" id="mCaissTel" placeholder="Ex: 07 XX XX XX XX"></div>
-              <div class="fg"><label>Notes</label><textarea id="mCaissNotes" rows="2" placeholder="Observations…"></textarea></div>
-              <div class="fg"><label>Statut</label>
-                <select id="mCaissStatut">
-                  <option value="actif">✅ Actif</option>
-                  <option value="inactif">❌ Inactif</option>
-                </select>
-              </div>
-            </div>
-            <div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mCaissiere')">Annuler</button><button class="btn btn-green" onclick="saveCaissiere()">Enregistrer</button></div>
-          </div>
-        </div>
+        
 
         <div id="adm-mm-pdv" style="display:none"><div class="card"><div class="card-header"><span class="card-title">Mobile Money — Numéros & Soldes par dépôt</span><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="imprimerConfig('mm-pdv')">🖨️ Imprimer</button></div></div><div class="tbl-wrap"><table><thead><tr><th>PDV / Dépôt</th><th>🟠 Orange Money<br><small>N° · Solde</small></th><th>🟡 MTN MoMo<br><small>N° · Solde</small></th><th>🔵 Wave<br><small>N° · Solde</small></th><th>🟢 Moov Money<br><small>N° · Solde</small></th><th>Total MM</th><th>💵 Caisse locale</th><th>🏦 Banque locale</th><th></th></tr></thead><tbody id="mmPDVTbody"></tbody><tfoot id="mmPDVTfoot"></tfoot></table></div></div></div>
       </div>
@@ -794,5 +777,24 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
 <!-- TOAST -->
 <div class="toast" id="toast"></div>
 <script src="app.js" type="module"></script>
+<!-- Modal caissière -->
+        <div class="modal-ov" id="mCaissiere" style="display:none">
+          <div class="modal" style="max-width:480px">
+            <div class="modal-hdr"><div class="modal-title">👤 Caissière</div><button class="close-x" onclick="closeM('mCaissiere')">✕</button></div>
+            <div class="modal-body">
+              <div class="fg"><label>Nom complet *</label><input type="text" id="mCaissNom" placeholder="Ex: DIGBEU EMMANUELLA"></div>
+              <div class="fg"><label>PDV rattaché</label><select id="mCaissPDV"><option value="">— Tous PDV —</option></select></div>
+              <div class="fg"><label>Téléphone</label><input type="tel" id="mCaissTel" placeholder="Ex: 07 XX XX XX XX"></div>
+              <div class="fg"><label>Notes</label><textarea id="mCaissNotes" rows="2" placeholder="Observations…"></textarea></div>
+              <div class="fg"><label>Statut</label>
+                <select id="mCaissStatut">
+                  <option value="actif">✅ Actif</option>
+                  <option value="inactif">❌ Inactif</option>
+                </select>
+              </div>
+            </div>
+            <div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mCaissiere')">Annuler</button><button class="btn btn-green" onclick="saveCaissiere()">Enregistrer</button></div>
+          </div>
+        </div>
 </body>
 </html>
