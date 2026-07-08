@@ -88,6 +88,7 @@ let transferts = LS.g('transferts') || []; // NEW v4 — transferts MM→Banque
 let petiteCaisse = LS.g('petiteCaisse') || []; // NEW v4.1 — petite caisse
 let rapportsNouveaux = LS.g('rapportsNouveaux') || []; // v4.2 — Reports à Nouveaux (RAN)
 let caissieresDB = LS.g('caissieresDB') || []; // v4.3 — Caissières (base de données)
+let vacationsDB = LS.g('vacationsDB') || []; // v4.3 — Plages horaires (vacations)
 let currentUser = null;
 let backupTimer = null;
 
@@ -114,12 +115,13 @@ async function loadAll(){
   const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc,fran]=await Promise.all([
     fbLoad('users'),fbLoad('pdvs'),fbLoad('comptes'),fbLoad('recettes'),
     fbLoad('versements'),fbLoad('mvts'),fbLoad('clotures'),fbLoad('transferts'),
-    fbLoad('petiteCaisse'),fbLoad('rapportsNouveaux'),fbLoad('caissieresDB')
+    fbLoad('petiteCaisse'),fbLoad('rapportsNouveaux'),fbLoad('caissieresDB'),fbLoad('vacationsDB')
   ]);
   if(fu)users=fu; if(fp)pdvs=fp; if(fc)comptes=fc; if(fr)recettes=fr;
   if(fv)versements=fv; if(fm)mvts=fm; if(fcl)clotures=fcl; if(ft)transferts=ft;
   if(fpc)petiteCaisse=fpc; if(fran)rapportsNouveaux=fran;
   const fcaiss=await fbLoad('caissieresDB'); if(fcaiss)caissieresDB=fcaiss;
+  const fvac=await fbLoad('vacationsDB'); if(fvac)vacationsDB=fvac;
   saveLocal(); sync('ok','🔴 Temps réel');
 }
 function subscribeAll(){
@@ -146,6 +148,7 @@ function saveLocal(){
   LS.s('clotures',clotures);LS.s('transferts',transferts);LS.s('petiteCaisse',petiteCaisse);
   LS.s('rapportsNouveaux',rapportsNouveaux);
   LS.s('caissieresDB',caissieresDB);
+  LS.s('vacationsDB',vacationsDB);
 }
 async function saveItem(col,item){ saveLocal(); if(useFirebase){sync('syncing','Sync…');await fbSave(col,item.id,item);sync('ok','🔴 Temps réel');} }
 async function delItem(col,id){ saveLocal(); if(useFirebase){await fbDel(col,id);} }
@@ -1311,6 +1314,7 @@ function calcCaisse(){
 window.calcCaisse=calcCaisse;
 function openCaisseModal(id){
   populateCaissiereSelect();
+  populateVacationSelect();
   const dateRef=document.getElementById('caisseDate')?.value||today();
   document.getElementById('mcDate').value=dateRef;
   document.getElementById('mcDateTravail').value=dateRef; // par défaut = même jour
@@ -2222,7 +2226,119 @@ function renderRapport(){
     </div>`;
 }
 // ══════════════════════════════════════════════════════
-// MODULE CAISSIÈRES v4.3
+// MODULE VACATIONS (PLAGES HORAIRES) v4.3
+// ══════════════════════════════════════════════════════
+
+// Plages par défaut si aucune n'est configurée
+const VACATIONS_DEFAUT = [
+  { id:'v1', libelle:'Matin',          heureDebut:'07h', heureFin:'14h', actif:true },
+  { id:'v2', libelle:'Après-midi',     heureDebut:'14h', heureFin:'21h', actif:true },
+  { id:'v3', libelle:'Nuit',           heureDebut:'21h', heureFin:'07h', actif:true },
+  { id:'v4', libelle:'Journée complète', heureDebut:'07h', heureFin:'21h', actif:true },
+];
+
+function getVacations() {
+  const actives = vacationsDB.filter(v => v.actif !== false);
+  return actives.length ? actives : VACATIONS_DEFAUT;
+}
+
+function vacationLabel(v) {
+  if (!v.heureDebut && !v.heureFin) return v.libelle;
+  return `${v.libelle} (${v.heureDebut}–${v.heureFin})`;
+}
+
+function populateVacationSelect() {
+  const el = document.getElementById('mcVacation');
+  if (!el) return;
+  const vacs = getVacations();
+  el.innerHTML = vacs.map(v => `<option value="${vacationLabel(v)}">${vacationLabel(v)}</option>`).join('');
+}
+window.populateVacationSelect = populateVacationSelect;
+
+function renderAdminVacations() {
+  const tbody = document.getElementById('vacationsTbody');
+  if (!tbody) return;
+  const vacs = getVacations();
+  if (!vacationsDB.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:14px;color:var(--text3)">
+      Plages par défaut actives — cliquez "+ Ajouter" pour personnaliser
+    </td></tr>` + VACATIONS_DEFAUT.map((v,i) => `<tr style="opacity:.6">
+      <td style="color:var(--text3);text-align:right;font-size:.68rem">${i+1}</td>
+      <td><b>${v.libelle}</b></td>
+      <td style="color:var(--cyan)">${v.heureDebut}</td>
+      <td style="color:var(--cyan)">${v.heureFin}</td>
+      <td><span class="badge bg">✅ Défaut</span></td>
+    </tr>`).join('');
+    return;
+  }
+  tbody.innerHTML = vacs.map((v,i) => `<tr>
+    <td style="color:var(--text3);text-align:right;font-size:.68rem">${i+1}</td>
+    <td><b>${v.libelle}</b></td>
+    <td style="color:var(--cyan);font-weight:700">${v.heureDebut||'—'}</td>
+    <td style="color:var(--cyan);font-weight:700">${v.heureFin||'—'}</td>
+    <td style="display:flex;gap:4px">
+      <button class="btn btn-ghost btn-xs" onclick="ouvrirModalVacation('${v.id}')">✏️</button>
+      <button class="btn btn-red btn-xs" onclick="delVacation('${v.id}')">✕</button>
+    </td>
+  </tr>`).join('');
+}
+window.renderAdminVacations = renderAdminVacations;
+
+function ouvrirModalVacation(id) {
+  const v = id ? vacationsDB.find(x => x.id === id) : null;
+  document.getElementById('mVacLibelle').value = v?.libelle || '';
+  document.getElementById('mVacDebut').value = v?.heureDebut || '';
+  document.getElementById('mVacFin').value = v?.heureFin || '';
+  document.getElementById('mVacStatut').value = v?.actif === false ? 'inactif' : 'actif';
+  document.getElementById('mVacation')._editId = id || null;
+  openM('mVacation');
+}
+window.ouvrirModalVacation = ouvrirModalVacation;
+
+async function saveVacation() {
+  const libelle = document.getElementById('mVacLibelle').value.trim();
+  if (!libelle) { toast('Le libellé est obligatoire', 'err'); return; }
+  const editId = document.getElementById('mVacation')._editId;
+  const vac = {
+    id: editId || uid(),
+    libelle,
+    heureDebut: document.getElementById('mVacDebut').value.trim(),
+    heureFin: document.getElementById('mVacFin').value.trim(),
+    actif: document.getElementById('mVacStatut').value === 'actif',
+    ts: Date.now()
+  };
+  // Si c'est la première saisie, initialiser avec les défauts d'abord
+  if (!vacationsDB.length) {
+    for (const d of VACATIONS_DEFAUT) {
+      vacationsDB.push(d);
+      await saveItem('vacationsDB', d);
+    }
+  }
+  if (editId) {
+    const idx = vacationsDB.findIndex(x => x.id === editId);
+    if (idx > -1) vacationsDB[idx] = vac;
+  } else {
+    vacationsDB.push(vac);
+  }
+  await saveItem('vacationsDB', vac);
+  saveLocal();
+  closeM('mVacation');
+  toast(`✅ Vacation "${vacationLabel(vac)}" enregistrée`);
+  renderAdminVacations();
+  populateVacationSelect();
+}
+window.saveVacation = saveVacation;
+
+async function delVacation(id) {
+  if (!confirm('Supprimer cette plage horaire ?')) return;
+  vacationsDB = vacationsDB.filter(x => x.id !== id);
+  await delItem('vacationsDB', id);
+  saveLocal();
+  renderAdminVacations();
+  populateVacationSelect();
+  toast('Supprimée', 'info');
+}
+window.delVacation = delVacation;
 // ══════════════════════════════════════════════════════
 function renderAdminCaissieres(){
   const tbody=document.getElementById('caissieresdbTbody');
@@ -2516,7 +2632,7 @@ window.imprimerDetailRapport = imprimerDetailRapport;
 // ADMIN — CONFIG
 // ══════════════════════════════════════════════════════
 function adminTab(name){
-  const tabs=['pdv','banques','mm-tetes','mm-pdv','caissieresdb'];
+  const tabs=['pdv','banques','mm-tetes','mm-pdv','caissieresdb','vacations'];
   tabs.forEach(t=>{
     const el=document.getElementById('adm-'+t);
     if(el)el.style.display=t===name?'block':'none';
@@ -2527,6 +2643,7 @@ function adminTab(name){
   if(name==='mm-tetes') renderAdminMMTetes();
   if(name==='mm-pdv') renderAdminMMPDV();
   if(name==='caissieresdb') renderAdminCaissieres();
+  if(name==='vacations') renderAdminVacations();
 }
 window.adminTab=adminTab;
 
