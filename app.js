@@ -1656,6 +1656,19 @@ function ouvrirMouvementsCompte(compteId){
 }
 window.ouvrirMouvementsCompte=ouvrirMouvementsCompte;
 function renderMvts(){
+  // Résumé mois courant pour le compte filtré
+  const mois=today().slice(0,7);
+  const cF=document.getElementById('fMCompte')?.value;
+  const cptSel=cF?comptes.find(c=>c.id===cF):null;
+  const mvtsMois=mvts.filter(m=>(cF?m.compte===cF:true)&&m.date?.slice(0,7)===mois);
+  const entreesMois=mvtsMois.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0);
+  const sortiesMois=mvtsMois.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0);
+  const soldeAct=cptSel?(cptSel.solde||0):(comptes.filter(c=>c.actif!==false).reduce((s,c)=>s+(c.solde||0),0));
+  renderSoldeHeader('mvtsResumeHeader',{
+    soldeActuel:soldeAct, compteId:cptSel?.id||null,
+    entrées:entreesMois, sorties:sortiesMois,
+    label:cptSel?cptSel.nom:'Tous comptes', couleur:'var(--blue)'
+  });
   // Fusion mouvements + transferts
   const allMvts=[
     ...mvts.map(m=>({...m,_src:'mvt'})),
@@ -1987,7 +2000,16 @@ function renderCaisseP(){
   if(cpSolde){cpSolde.textContent=fmt(solde)+' '+DEVISE;cpSolde.style.color=solde>=0?'var(--green)':'var(--red)';}
   const tbody=document.getElementById('cpTbody');
   if(!tbody)return;
+  const mois=today().slice(0,7);
   const data=mvts.filter(m=>m.compte===cp?.id).sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+  const dataMois=data.filter(m=>m.date?.slice(0,7)===mois);
+  const entrees=dataMois.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0);
+  const sorties=dataMois.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0);
+  renderSoldeHeader('cpResumeHeader',{
+    soldeActuel:solde, compteId:cp?.id,
+    entrées:entrees, sorties:sorties,
+    label:'Caisse Principale', couleur:'var(--green)'
+  });
   if(!data.length){tbody.innerHTML='<tr><td colspan="10"><div class="empty-state"><div class="ei">🏛️</div>Aucun mouvement caisse principale</div></td></tr>';return;}
   tbody.innerHTML=data.map((m,i)=>`<tr>
     ${rowNum(i)}
@@ -2229,7 +2251,66 @@ function renderRapport(){
     </div>`;
 }
 // ══════════════════════════════════════════════════════
-// MODULE VACATIONS (PLAGES HORAIRES) v4.3
+// BARRE SOLDE UNIVERSEL — Ouverture / Entrées / Sorties / Solde actuel
+// ══════════════════════════════════════════════════════
+function renderSoldeHeader(containerId, opts = {}) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+
+  const moisCourant = today().slice(0, 7);
+  const debutMoisStr = moisCourant + '-01';
+
+  const {
+    soldeActuel = 0,
+    compteId = null,        // pour chercher le RAN
+    entrées = 0,
+    sorties = 0,
+    label = '',
+    couleur = 'var(--green)',
+  } = opts;
+
+  // Chercher le RAN du mois courant pour ce compte
+  const ran = compteId
+    ? rapportsNouveaux.find(r => r.compteId === compteId && r.periode === moisCourant)
+    : null;
+  const soldeOuv = ran ? ran.soldeOuverture : null;
+  const ecart = soldeOuv !== null ? soldeActuel - soldeOuv : null;
+
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px">
+      <div class="stat-card" style="border-left:3px solid var(--text3)">
+        <div class="stat-lbl">📅 Solde ouverture (${moisCourant})</div>
+        <div class="stat-val" style="color:${soldeOuv!==null?(soldeOuv>=0?'var(--green)':'var(--red)'):'var(--text3)'}">
+          ${soldeOuv !== null ? fmt(soldeOuv) : '—'}
+        </div>
+        <div style="font-size:.65rem;color:var(--text3)">${soldeOuv !== null ? 'RAN capturé ✓' : 'RAN non capturé'} ${DEVISE}</div>
+      </div>
+      <div class="stat-card" style="border-left:3px solid var(--green)">
+        <div class="stat-lbl">↑ Entrées du mois</div>
+        <div class="stat-val" style="color:var(--green)">${fmt(entrées)}</div>
+        <div style="font-size:.65rem;color:var(--text3)">${DEVISE}</div>
+      </div>
+      <div class="stat-card" style="border-left:3px solid var(--red)">
+        <div class="stat-lbl">↓ Sorties du mois</div>
+        <div class="stat-val" style="color:var(--red)">${fmt(sorties)}</div>
+        <div style="font-size:.65rem;color:var(--text3)">${DEVISE}</div>
+      </div>
+      <div class="stat-card" style="border-left:3px solid ${couleur}">
+        <div class="stat-lbl">💰 Solde actuel</div>
+        <div class="stat-val" style="color:${soldeActuel>=0?couleur:'var(--red)'}; font-size:1.1rem">${fmt(soldeActuel)}</div>
+        <div style="font-size:.65rem;color:var(--text3)">${DEVISE}${label?' — '+label:''}</div>
+      </div>
+      ${ecart !== null ? `
+      <div class="stat-card" style="border-left:3px solid ${ecart>=0?'var(--green)':'var(--red)'}">
+        <div class="stat-lbl">📊 Variation depuis ouverture</div>
+        <div class="stat-val" style="color:${ecart>=0?'var(--green)':'var(--red)'}">
+          ${ecart>0?'+':''}${fmt(ecart)}
+        </div>
+        <div style="font-size:.65rem;color:var(--text3)">${DEVISE}</div>
+      </div>` : ''}
+    </div>`;
+}
+window.renderSoldeHeader = renderSoldeHeader;
 // ══════════════════════════════════════════════════════
 
 // Plages par défaut si aucune n'est configurée
@@ -3013,6 +3094,18 @@ function renderPetiteCaisse(){
   el('pcSolde',fmt(solde)+' '+DEVISE);
   const soldeEl=document.getElementById('pcSoldeEl');
   if(soldeEl)soldeEl.style.color=solde>=0?'var(--green)':'var(--red)';
+  // Résumé mois courant
+  const mois=today().slice(0,7);
+  const dataMois=petiteCaisse.filter(m=>m.date?.slice(0,7)===mois);
+  const entrees=dataMois.filter(m=>m.type==='appro').reduce((s,m)=>s+(m.montant||0),0);
+  const sorties=dataMois.filter(m=>m.type==='depense'||m.type==='dépense').reduce((s,m)=>s+(m.montant||0),0);
+  // Compte petite caisse pour le RAN
+  const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
+  renderSoldeHeader('pcResumeHeader',{
+    soldeActuel:solde, compteId:cptPC?.id,
+    entrées:entrees, sorties:sorties,
+    label:'Petite Caisse', couleur:'var(--amber)'
+  });
   if(!tbody)return;
   if(!data.length){tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="ei">💰</div>Aucun mouvement petite caisse</div></td></tr>';return;}
   let running=0;
