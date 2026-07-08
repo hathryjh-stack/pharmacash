@@ -1675,7 +1675,7 @@ function renderMvts(){
     ...transferts.map(t=>({...t,_src:'transfert'}))
   ].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
   let data=allMvts;
-  const dF=document.getElementById('fMDate').value,cF=document.getElementById('fMCompte').value,tF=document.getElementById('fMType').value;
+  const dF=document.getElementById('fMDate').value,tF=document.getElementById('fMType').value;
   if(dF)data=data.filter(m=>m.date===dF);if(cF)data=data.filter(m=>m.compte===cF||m.compteSrc===cF||m.compteDst===cF);if(tF)data=data.filter(m=>m.type===tF);
   const tbody=document.getElementById('mvtTbody');
   if(!data.length){tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><div class="ei">🏦</div>Aucun mouvement</div></td></tr>';return;}
