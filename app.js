@@ -87,6 +87,7 @@ let clotures   = LS.g('clotures')   || [];
 let transferts = LS.g('transferts') || []; // NEW v4 — transferts MM→Banque
 let petiteCaisse = LS.g('petiteCaisse') || []; // NEW v4.1 — petite caisse
 let rapportsNouveaux = LS.g('rapportsNouveaux') || []; // v4.2 — Reports à Nouveaux (RAN)
+let caissieresDB = LS.g('caissieresDB') || []; // v4.3 — Caissières (base de données)
 let currentUser = null;
 let backupTimer = null;
 
@@ -113,11 +114,12 @@ async function loadAll(){
   const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc,fran]=await Promise.all([
     fbLoad('users'),fbLoad('pdvs'),fbLoad('comptes'),fbLoad('recettes'),
     fbLoad('versements'),fbLoad('mvts'),fbLoad('clotures'),fbLoad('transferts'),
-    fbLoad('petiteCaisse'),fbLoad('rapportsNouveaux')
+    fbLoad('petiteCaisse'),fbLoad('rapportsNouveaux'),fbLoad('caissieresDB')
   ]);
   if(fu)users=fu; if(fp)pdvs=fp; if(fc)comptes=fc; if(fr)recettes=fr;
   if(fv)versements=fv; if(fm)mvts=fm; if(fcl)clotures=fcl; if(ft)transferts=ft;
   if(fpc)petiteCaisse=fpc; if(fran)rapportsNouveaux=fran;
+  const fcaiss=await fbLoad('caissieresDB'); if(fcaiss)caissieresDB=fcaiss;
   saveLocal(); sync('ok','🔴 Temps réel');
 }
 function subscribeAll(){
@@ -143,6 +145,7 @@ function saveLocal(){
   LS.s('recettes',recettes);LS.s('versements',versements);LS.s('mvts',mvts);
   LS.s('clotures',clotures);LS.s('transferts',transferts);LS.s('petiteCaisse',petiteCaisse);
   LS.s('rapportsNouveaux',rapportsNouveaux);
+  LS.s('caissieresDB',caissieresDB);
 }
 async function saveItem(col,item){ saveLocal(); if(useFirebase){sync('syncing','Sync…');await fbSave(col,item.id,item);sync('ok','🔴 Temps réel');} }
 async function delItem(col,id){ saveLocal(); if(useFirebase){await fbDel(col,id);} }
@@ -1283,12 +1286,17 @@ async function saveVersementEdit(id){
 window.saveVersementEdit=saveVersementEdit;
 function populateCaissiereSelect(){
   const el=document.getElementById('mcCaissiere');if(!el)return;
-  el.innerHTML=users.filter(u=>u.actif!==false).map(u=>`<option value="${u.nom}">${u.nom}</option>`).join('')+'<option value="__custom__">✏️ Autre…</option>';
+  // Source : caissieresDB en priorité, sinon users en fallback
+  const liste = caissieresDB.filter(c=>c.actif!==false).length > 0
+    ? caissieresDB.filter(c=>c.actif!==false)
+    : users.filter(u=>u.actif!==false).map(u=>({id:u.id,nom:u.nom,pdv:'',tel:''}));
+  el.innerHTML = liste.map(c=>`<option value="${c.nom}">${c.nom}${c.pdv?` — ${pdvs.find(p=>p.id===c.pdv)?.nom||''}`:''}</option>`).join('')
+    + '<option value="__custom__">✏️ Autre / Nouveau…</option>';
   el.onchange=function(){
     if(this.value==='__custom__'){
       const n=prompt('Nom de la caissière :');
       if(n){const o=document.createElement('option');o.value=n;o.textContent=n;o.selected=true;this.insertBefore(o,this.lastElementChild);this.value=n;}
-      else this.value=users[0]?.nom||'';
+      else this.value=liste[0]?.nom||'';
     }
   };
 }
@@ -1303,7 +1311,9 @@ function calcCaisse(){
 window.calcCaisse=calcCaisse;
 function openCaisseModal(id){
   populateCaissiereSelect();
-  document.getElementById('mcDate').value=document.getElementById('caisseDate')?.value||today();
+  const dateRef=document.getElementById('caisseDate')?.value||today();
+  document.getElementById('mcDate').value=dateRef;
+  document.getElementById('mcDateTravail').value=dateRef; // par défaut = même jour
   document.getElementById('mcSuperviseur').value=currentUser.nom;
   ['mcMachineCash','mcMachineOM','mcMachineMTN','mcMachineWAVE','mcMachineMOOV',
    'mcCashVerser','mcOMVerser','mcMTNVerser','mcWAVEVerser','mcMOOVVerser','mcRefCash','mcNotes']
@@ -1311,7 +1321,9 @@ function openCaisseModal(id){
   if(id){
     const c=clotures.find(x=>x.id===id);
     if(c){
-      document.getElementById('mcDate').value=c.date;document.getElementById('mcVacation').value=c.vacation;
+      document.getElementById('mcDate').value=c.date;
+      document.getElementById('mcDateTravail').value=c.dateTravail||c.date;
+      document.getElementById('mcVacation').value=c.vacation;
       document.getElementById('mcCaissiere').value=c.caissiere;
       ['mcMachineCash','mcMachineOM','mcMachineMTN','mcMachineWAVE','mcMachineMOOV',
        'mcCashVerser','mcOMVerser','mcMTNVerser','mcWAVEVerser','mcMOOVVerser'].forEach(fi=>{
@@ -1381,7 +1393,9 @@ function openCaisseModal(id){
 }
 window.openCaisseModal=openCaisseModal;
 async function saveCloture(){
-  const date=document.getElementById('mcDate').value,vacation=document.getElementById('mcVacation').value,caissiere=document.getElementById('mcCaissiere').value;
+  const date=document.getElementById('mcDate').value,
+    dateTravail=document.getElementById('mcDateTravail')?.value||date,
+    vacation=document.getElementById('mcVacation').value,caissiere=document.getElementById('mcCaissiere').value;
   if(!date||!vacation||!caissiere){toast('Date, vacation et caissière obligatoires','err');return;}
   const machineCash=nv('mcMachineCash'),machineOM=nv('mcMachineOM'),machineMTN=nv('mcMachineMTN'),
     machineWAVE=nv('mcMachineWAVE'),machineMOOV=nv('mcMachineMOOV'),
@@ -1390,7 +1404,7 @@ async function saveCloture(){
     waveVerse=nv('mcWAVEVerser'),moovVerse=nv('mcMOOVVerser'),
     totalVerse=cashVerse+omVerse+mtnVerse+waveVerse+moovVerse,ecart=totalVerse-totalMachine;
   const editId=document.getElementById('mCaisse')._editId;
-  const clot={id:editId||uid(),date,vacation,caissiere,superviseur:document.getElementById('mcSuperviseur').value,
+  const clot={id:editId||uid(),date,dateTravail,vacation,caissiere,superviseur:document.getElementById('mcSuperviseur').value,
     machineCash,machineOM,machineMTN,machineWAVE,machineMOOV,totalMachine,
     cashVerse,omVerse,mtnVerse,waveVerse,moovVerse,totalVerse,ecart,
     refCash:document.getElementById('mcRefCash').value,notes:document.getElementById('mcNotes').value,
@@ -1538,7 +1552,7 @@ function renderCaisse(){
   grid.innerHTML=dayC.map(c=>{
     const ep=c.ecart===0?'ecart-ok':c.ecart<0?'ecart-neg':'ecart-pos';
     const et=c.ecart===0?'✓ Équilibrée':c.ecart<0?`− ${fmt(Math.abs(c.ecart))} manquant`:`+ ${fmt(c.ecart)} excédent`;
-    return`<div class="caisse-card"><div class="cc-head"><div><div class="cc-caissiere">👤 ${c.caissiere}</div><div class="cc-vacation">${c.vacation}</div></div><div><span class="ecart-pill ${ep}">${et}</span><br><span class="clot-status ${c.statut==='validé'?'clot-closed':'clot-open'}" style="margin-top:4px;display:inline-block">${c.statut}</span></div></div>
+    return`<div class="caisse-card"><div class="cc-head"><div><div class="cc-caissiere">👤 ${c.caissiere}</div><div class="cc-vacation">${c.vacation}</div>${c.dateTravail&&c.dateTravail!==c.date?`<div style="font-size:.65rem;color:var(--cyan);margin-top:2px">📅 Journée : ${fmtD(c.dateTravail)} · Clôturé : ${fmtD(c.date)}</div>`:`<div style="font-size:.65rem;color:var(--text3);margin-top:2px">📅 ${fmtD(c.date)}</div>`}</div><div><span class="ecart-pill ${ep}">${et}</span><br><span class="clot-status ${c.statut==='validé'?'clot-closed':'clot-open'}" style="margin-top:4px;display:inline-block">${c.statut}</span></div></div>
     <div class="cc-row"><span class="cc-row-lbl">Machine</span><span class="cc-row-val" style="color:var(--blue)">${fmt(c.totalMachine)}</span></div>
     <div class="cc-row"><span class="cc-row-lbl">Cash versé</span><span class="cc-row-val">${fmt(c.cashVerse)}</span></div>
     <div class="cc-row"><span class="cc-row-lbl">MM versé</span><span class="cc-row-val">${fmt((c.omVerse||0)+(c.mtnVerse||0)+(c.waveVerse||0)+(c.moovVerse||0))}</span></div>
@@ -1553,7 +1567,10 @@ function renderCaisse(){
   }).join('');
   document.getElementById('caisseTbody').innerHTML=dayC.map((c,i)=>{
     const ec=c.ecart||0,ecC=ec===0?'amt pos':ec<0?'amt neg':'amt neu';
-    return`<tr><td style="color:var(--text3);font-size:.68rem;font-weight:600;text-align:right;padding-right:8px">${i+1}</td><td><span class="wk">${c.vacation}</span></td><td><b>${c.caissiere}</b></td>
+    return`<tr><td style="color:var(--text3);font-size:.68rem;font-weight:600;text-align:right;padding-right:8px">${i+1}</td>
+    <td style="font-size:.8rem;font-weight:700;color:${c.dateTravail&&c.dateTravail!==c.date?'var(--cyan)':'var(--text2)'}">${fmtD(c.dateTravail||c.date)}</td>
+    <td style="font-size:.75rem;color:var(--text3)">${c.dateTravail&&c.dateTravail!==c.date?fmtD(c.date):'—'}</td>
+    <td><span class="wk">${c.vacation}</span></td><td><b>${c.caissiere}</b></td>
     <td class="amt" style="color:var(--blue)">${fmt(c.totalMachine)}</td>
     <td class="amt ${c.cashVerse>0?'pos':''}">${fmt(c.cashVerse)}</td>
     <td class="amt pos">${fmt((c.omVerse||0)+(c.mtnVerse||0)+(c.waveVerse||0)+(c.moovVerse||0))}</td>
@@ -2204,7 +2221,128 @@ function renderRapport(){
       </div>`}).join('')||'<div style="color:var(--text3)">Aucun versement confirmé</div>'}
     </div>`;
 }
-window.renderRapport=renderRapport;
+// ══════════════════════════════════════════════════════
+// MODULE CAISSIÈRES v4.3
+// ══════════════════════════════════════════════════════
+function renderAdminCaissieres(){
+  const tbody=document.getElementById('caissieresdbTbody');
+  if(!tbody)return;
+  if(!caissieresDB.length){
+    tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="ei">👤</div>Aucune caissière enregistrée<br><button class="btn btn-green btn-sm" style="margin-top:10px" onclick="ouvrirModalCaissiere()">+ Ajouter la première</button></div></td></tr>';
+    return;
+  }
+  tbody.innerHTML=caissieresDB.map((c,i)=>{
+    const pdvNom=pdvs.find(p=>p.id===c.pdv)?.nom||'Tous PDV';
+    const statutBadge=c.actif===false
+      ?'<span class="badge br">❌ Inactif</span>'
+      :'<span class="badge bg">✅ Actif</span>';
+    return`<tr>
+      <td style="color:var(--text3);font-size:.68rem;text-align:right">${i+1}</td>
+      <td><b>${c.nom}</b></td>
+      <td style="font-size:.8rem">${pdvNom}</td>
+      <td style="font-size:.8rem;color:var(--text2)">${c.tel||'—'}</td>
+      <td style="font-size:.75rem;color:var(--text3)">${c.notes||'—'}</td>
+      <td>${statutBadge}</td>
+      <td style="display:flex;gap:4px">
+        <button class="btn btn-ghost btn-xs" onclick="ouvrirModalCaissiere('${c.id}')">✏️</button>
+        <button class="btn btn-red btn-xs" onclick="delCaissiere('${c.id}')">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+window.renderAdminCaissieres=renderAdminCaissieres;
+
+function ouvrirModalCaissiere(id){
+  // Peupler le select PDV
+  const selPDV=document.getElementById('mCaissPDV');
+  if(selPDV) selPDV.innerHTML='<option value="">— Tous PDV —</option>'+pdvs.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
+  const c=id?caissieresDB.find(x=>x.id===id):null;
+  document.getElementById('mCaissNom').value=c?.nom||'';
+  document.getElementById('mCaissPDV').value=c?.pdv||'';
+  document.getElementById('mCaissTel').value=c?.tel||'';
+  document.getElementById('mCaissNotes').value=c?.notes||'';
+  document.getElementById('mCaissStatut').value=c?.actif===false?'inactif':'actif';
+  document.getElementById('mCaissiere')._editId=id||null;
+  openM('mCaissiere');
+}
+window.ouvrirModalCaissiere=ouvrirModalCaissiere;
+
+async function saveCaissiere(){
+  const nom=document.getElementById('mCaissNom').value.trim();
+  if(!nom){toast('Le nom est obligatoire','err');return;}
+  const editId=document.getElementById('mCaissiere')._editId;
+  const caiss={
+    id:editId||uid(),
+    nom,
+    pdv:document.getElementById('mCaissPDV').value||'',
+    tel:document.getElementById('mCaissTel').value.trim(),
+    notes:document.getElementById('mCaissNotes').value.trim(),
+    actif:document.getElementById('mCaissStatut').value==='actif',
+    ts:Date.now()
+  };
+  if(editId){
+    const idx=caissieresDB.findIndex(c=>c.id===editId);
+    if(idx>-1)caissieresDB[idx]=caiss;
+  } else {
+    // Vérifier doublon
+    if(caissieresDB.find(c=>c.nom.toLowerCase()===nom.toLowerCase())){
+      if(!confirm(`Une caissière nommée "${nom}" existe déjà. Ajouter quand même ?`))return;
+    }
+    caissieresDB.push(caiss);
+  }
+  await saveItem('caissieresDB',caiss);
+  saveLocal();
+  closeM('mCaissiere');
+  toast(`✅ Caissière "${nom}" enregistrée`);
+  renderAdminCaissieres();
+  // Mettre à jour le select dans le modal clôture si ouvert
+  populateCaissiereSelect();
+}
+window.saveCaissiere=saveCaissiere;
+
+async function delCaissiere(id){
+  const c=caissieresDB.find(x=>x.id===id);
+  if(!c)return;
+  // Vérifier si elle a des clôtures
+  const nbClot=clotures.filter(cl=>cl.caissiere===c.nom).length;
+  if(nbClot>0){
+    if(!confirm(`"${c.nom}" a ${nbClot} clôture(s) enregistrée(s).\nSuppression définitive ou marquer comme inactive ?\n\nOK = Supprimer | Annuler = Marquer inactive`)){
+      // Marquer inactive
+      c.actif=false;
+      await saveItem('caissieresDB',c);
+      saveLocal();
+      renderAdminCaissieres();
+      toast(`"${c.nom}" marquée inactive`,'info');
+      return;
+    }
+  } else {
+    if(!confirm(`Supprimer "${c.nom}" ?`))return;
+  }
+  caissieresDB=caissieresDB.filter(x=>x.id!==id);
+  await delItem('caissieresDB',id);
+  saveLocal();
+  renderAdminCaissieres();
+  toast('Supprimée','info');
+}
+window.delCaissiere=delCaissiere;
+
+// ── Import automatique depuis les clôtures existantes ─
+async function importerCaissieresDepsExistantes(){
+  // Récupère tous les noms uniques de caissières déjà dans les clôtures
+  const nomsExistants=new Set(caissieresDB.map(c=>c.nom.toLowerCase()));
+  const nomsClot=[...new Set(clotures.map(c=>c.caissiere).filter(Boolean))];
+  const aImporter=nomsClot.filter(n=>!nomsExistants.has(n.toLowerCase()));
+  if(!aImporter.length){toast('Toutes les caissières sont déjà dans la base','info');return;}
+  for(const nom of aImporter){
+    const caiss={id:uid(),nom,pdv:'',tel:'',notes:'Importée automatiquement',actif:true,ts:Date.now()};
+    caissieresDB.push(caiss);
+    await saveItem('caissieresDB',caiss);
+  }
+  saveLocal();
+  renderAdminCaissieres();
+  toast(`✅ ${aImporter.length} caissière(s) importée(s) depuis les clôtures`);
+}
+window.importerCaissieresDepsExistantes=importerCaissieresDepsExistantes;
 
 // ── Détail opérations depuis Rapport (modal) ──────────
 function ouvrirDetailRapportPDV(pdvId, debut, fin) {
@@ -2378,15 +2516,17 @@ window.imprimerDetailRapport = imprimerDetailRapport;
 // ADMIN — CONFIG
 // ══════════════════════════════════════════════════════
 function adminTab(name){
-  const tabs=['pdv','banques','mm-tetes','mm-pdv'];
+  const tabs=['pdv','banques','mm-tetes','mm-pdv','caissieresdb'];
   tabs.forEach(t=>{
-    document.getElementById('adm-'+t).style.display=t===name?'block':'none';
+    const el=document.getElementById('adm-'+t);
+    if(el)el.style.display=t===name?'block':'none';
   });
   document.querySelectorAll('#pg-admin .inner-tab').forEach(t=>{
     t.classList.toggle('active',t.dataset.tab===name);
   });
   if(name==='mm-tetes') renderAdminMMTetes();
   if(name==='mm-pdv') renderAdminMMPDV();
+  if(name==='caissieresdb') renderAdminCaissieres();
 }
 window.adminTab=adminTab;
 
