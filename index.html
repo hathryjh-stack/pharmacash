@@ -208,6 +208,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <button class="btn btn-green btn-sm" onclick="openMvtModal()">+ Mouvement</button>
           </div></div>
         <div class="compte-cards" id="bqComptes"></div>
+        <div id="mvtsResumeHeader"></div>
         <div class="card"><div class="card-header"><span class="card-title">Journal des mouvements</span></div>
           <div class="filters"><input type="date" id="fMDate" class="fi" onchange="renderMvts()"><select id="fMCompte" class="fi" onchange="renderMvts()"><option value="">Tous comptes</option></select><select id="fMType" class="fi" onchange="renderMvts()"><option value="">Tous types</option><option value="entrée">Entrées</option><option value="sortie">Sorties</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fMDate','fMCompte','fMType');renderMvts()">✕</button></div>
           <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>Compte</th><th>Type</th><th>Libellé</th><th>Réf.</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="mvtTbody"></tbody></table></div>
@@ -239,6 +240,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <button class="btn btn-red btn-sm" onclick="openCPModal('sortie')">↓ Sortie</button>
           </div>
         </div>
+        <div id="cpResumeHeader"></div>
         <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Rubrique</th><th>Libellé</th><th>Bénéficiaire</th><th>Référence</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="cpTbody"></tbody></table></div></div>
       </div>
 
@@ -260,6 +262,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <button class="btn btn-red btn-sm" onclick="openPCModal('depense')">− Dépense</button>
           </div>
         </div>
+        <div id="pcResumeHeader"></div>
         <div class="card"><div class="tbl-wrap"><table><thead><tr><th>Date & Heure</th><th>Type</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Solde après</th><th>Référence</th><th>Saisi par</th></tr></thead><tbody id="pcTbody"></tbody></table></div></div>
       </div>
       <!-- SUIVI CAISSIÈRES -->
