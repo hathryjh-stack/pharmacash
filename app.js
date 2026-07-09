@@ -1472,18 +1472,64 @@ async function saveCloture(){
   await saveItem('clotures',clot);closeM('mCaisse');toast(editId?'Clôture modifiée ✓':'Clôture enregistrée ✓');renderCaisse();
 }
 window.saveCloture=saveCloture;
+// ── Créer automatiquement une recette depuis une clôture PSRM ──
+async function creerRecetteDepuisClot(clot) {
+  // Vérifier que c'est bien la pharmacie principale
+  const pdvP = pdvs.find(p => p.type === 'principale');
+  if (!pdvP) return;
+
+  // Éviter les doublons — vérifier si une recette de clôture existe déjà pour cette clôture
+  const dejaExiste = recettes.find(r => r._clotureId === clot.id);
+  if (dejaExiste) return;
+
+  const totalMachine = clot.totalMachine || 0;
+  if (!totalMachine) return; // pas de recette si machine = 0
+
+  // Date = journée travaillée si disponible, sinon date de clôture
+  const dateRecette = clot.dateTravail || clot.date;
+
+  const recette = {
+    id: uid(),
+    date: dateRecette,
+    pdv: pdvP.id,
+    canal: 'CASH', // canal principal — la recette globale est en CASH (machine)
+    type: 'vente comptoir',
+    montant: totalMachine,
+    ref: `CLT-${clot.id.slice(-6).toUpperCase()}`,
+    notes: `Généré automatiquement depuis clôture ${clot.vacation} — ${clot.caissiere}`,
+    saisie: currentUser?.nom || 'SYSTEM',
+    _clotureId: clot.id, // lien vers la clôture source
+    _auto: true,
+    ts: Date.now()
+  };
+  recettes.push(recette);
+  await saveItem('recettes', recette);
+  saveLocal();
+  return recette;
+}
+
 async function validerClot(id){
   const c=clotures.find(x=>x.id===id);if(!c)return;
   c.statut='validé';c.valide_par=currentUser.nom;c.valide_ts=Date.now();
-  await saveItem('clotures',c);renderCaisse();toast('Validée ✓');
+  await saveItem('clotures',c);
+  // Créer automatiquement la recette PSRM
+  const rec = await creerRecetteDepuisClot(c);
+  renderCaisse();
+  toast(`Validée ✓${rec?' — Recette '+fmt(rec.montant)+' FCFA ajoutée automatiquement':''}`);
 }
 window.validerClot=validerClot;
+
 async function validerToutesClot(){
   const date=document.getElementById('caisseDate').value||today();
+  let nbRec=0;
   for(const c of clotures.filter(x=>x.date===date&&x.statut==='ouvert')){
-    c.statut='validé';c.valide_par=currentUser.nom;c.valide_ts=Date.now();await saveItem('clotures',c);
+    c.statut='validé';c.valide_par=currentUser.nom;c.valide_ts=Date.now();
+    await saveItem('clotures',c);
+    const rec = await creerRecetteDepuisClot(c);
+    if(rec) nbRec++;
   }
-  renderCaisse();toast('Toutes validées ✓');
+  renderCaisse();
+  toast(`Toutes validées ✓${nbRec?' — '+nbRec+' recette(s) ajoutée(s) automatiquement':''}`);
 }
 window.validerToutesClot=validerToutesClot;
 
@@ -2195,14 +2241,51 @@ function onPeriodeChange(){
   renderRapport();
 }
 window.onPeriodeChange=onPeriodeChange;
+// ── Gestion des vues rapport ─────────────────────────
+let _rapportVue = 'globale'; // 'globale' | 'depots' | 'psrm'
+function setRapportVue(vue) {
+  _rapportVue = vue;
+  // Mettre à jour les boutons
+  ['globale','depots','psrm'].forEach(v => {
+    const btn = document.getElementById('rVue'+v.charAt(0).toUpperCase()+v.slice(1));
+    if (!btn) return;
+    btn.style.background = v === vue ? 'var(--green)' : '';
+    btn.style.color = v === vue ? '#fff' : '';
+    btn.className = v === vue ? 'btn btn-sm' : 'btn btn-ghost btn-sm';
+  });
+  renderRapport();
+}
+window.setRapportVue = setRapportVue;
+
 function renderRapport(){
   const t=today(),p=document.getElementById('rPeriode').value;
   let debut,fin;
   if(p==='jour'){debut=t;fin=t;}else if(p==='semaine'){const b=weekBounds(t);debut=b.start;fin=b.end;}
   else if(p==='mois'){debut=t.slice(0,7)+'-01';fin=t;}
   else{debut=document.getElementById('rDebut').value||t;fin=document.getElementById('rFin').value||t;}
-  const recF=recettes.filter(r=>r.date>=debut&&r.date<=fin);
-  const verF=versements.filter(v=>v.date>=debut&&v.date<=fin);
+
+  // Filtrer selon la vue sélectionnée
+  const pdvP = pdvs.find(p=>p.type==='principale');
+  const pdvDepots = pdvs.filter(p=>p.type!=='principale').map(p=>p.id);
+
+  let recF = recettes.filter(r=>r.date>=debut&&r.date<=fin);
+  let verF = versements.filter(v=>v.date>=debut&&v.date<=fin);
+
+  // Vue PSRM : recettes auto depuis clôtures + versements PSRM
+  // Vue Dépôts : recettes et versements des dépôts uniquement
+  if(_rapportVue==='psrm' && pdvP){
+    recF = recF.filter(r=>r.pdv===pdvP.id);
+    verF = verF.filter(v=>v.pdv===pdvP.id);
+  } else if(_rapportVue==='depots'){
+    recF = recF.filter(r=>pdvDepots.includes(r.pdv));
+    verF = verF.filter(v=>pdvDepots.includes(v.pdv));
+  }
+  // Vue globale = tout (pas de filtre)
+
+  // Label de la vue
+  const vueLabel = _rapportVue==='psrm'?'🏛️ Pharmacie Principale':
+                   _rapportVue==='depots'?'🏪 Dépôts uniquement':'🌐 Vue globale (Pharmacie + Dépôts)';
+
   const totR=recF.reduce((s,r)=>s+(r.montant||0),0),totV=verF.reduce((s,v)=>s+(v.montant||0),0),
     totC=verF.filter(v=>v.statut==='confirmé').reduce((s,v)=>s+(v.montant||0),0),
     totA=verF.filter(v=>v.statut==='en attente').reduce((s,v)=>s+(v.montant||0),0),ecart=totR-totC;
@@ -2211,12 +2294,23 @@ function renderRapport(){
   verF.forEach(v=>{if(byPDV[v.pdv]){byPDV[v.pdv].ver+=v.montant||0;if(v.statut==='confirmé')byPDV[v.pdv].verC+=v.montant||0}});
   const byCanal={};recF.forEach(r=>{if(!byCanal[r.canal])byCanal[r.canal]=0;byCanal[r.canal]+=r.montant||0});
   const byCpt={};verF.filter(v=>v.statut==='confirmé').forEach(v=>{if(!byCpt[v.compte])byCpt[v.compte]=0;byCpt[v.compte]+=v.montant||0});
+
+  // Clôtures PSRM pour la vue PSRM
+  const clotF = _rapportVue==='psrm'
+    ? clotures.filter(c=>c.date>=debut&&c.date<=fin&&c.statut==='validé')
+    : [];
+  const totMachine = clotF.reduce((s,c)=>s+(c.totalMachine||0),0);
+
   document.getElementById('rapportContent').innerHTML=`
+    <div style="font-size:.75rem;color:var(--cyan);font-weight:700;margin-bottom:10px">${vueLabel}</div>
     <div class="stats-grid">
-      <div class="stat-card green"><div class="stat-lbl">Recettes</div><div class="stat-val green">${fmt(totR)}</div><div class="stat-sub">${DEVISE}</div></div>
+      <div class="stat-card green"><div class="stat-lbl">Recettes CA</div><div class="stat-val green">${fmt(totR)}</div><div class="stat-sub">${DEVISE}</div></div>
+      ${_rapportVue==='psrm'?`<div class="stat-card blue"><div class="stat-lbl">Total Machine</div><div class="stat-val blue">${fmt(totMachine)}</div><div class="stat-sub">${DEVISE} — ${clotF.length} clôture(s)</div></div>`:''}
       <div class="stat-card blue"><div class="stat-lbl">Versements</div><div class="stat-val blue">${fmt(totV)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card purple"><div class="stat-lbl">Confirmés</div><div class="stat-val purple">${fmt(totC)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card amber"><div class="stat-lbl">En attente</div><div class="stat-val amber">${fmt(totA)}</div><div class="stat-sub">${DEVISE}</div></div>
+      <div class="stat-card ${ecart>=0?'green':'red'}"><div class="stat-lbl">Écart CA/Versé</div><div class="stat-val ${ecart>=0?'green':'red'}">${ecart>=0?'+':''}${fmt(ecart)}</div><div class="stat-sub">${DEVISE}</div></div>
+    </div>
       <div class="stat-card ${ecart>0?'amber':ecart===0?'green':'red'}"><div class="stat-lbl">Écart</div><div class="stat-val ${ecart>0?'amber':ecart===0?'green':'red'}">${fmt(ecart)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card green"><div class="stat-lbl">✓ Disponible banques</div><div class="stat-val green">${fmt(totalDispo())}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card amber"><div class="stat-lbl">⏳ En transit MM</div><div class="stat-val amber">${fmt(totalTransit())}</div><div class="stat-sub">${DEVISE}</div></div>
