@@ -4139,35 +4139,35 @@ async function capturerRANMois(periode, mode = 'AUTOMATIQUE') {
     const existant = getRAN(c.id, periode);
     if (existant && existant.verrouille) { nbExistants++; continue; }
 
-    // Calcule le solde à la fin du mois précédent
-    // = solde actuel MOINS toutes les opérations du mois en cours
+    // Priorité 1 : soldeInit = solde d'ouverture importé depuis le fichier Excel
+    // C'est la valeur la plus fiable pour le mois de démarrage
+    // Priorité 2 : calcul à rebours depuis le solde actuel (mois suivants)
+    let soldeRAN = 0;
     const debutPeriode = debutMois(periode);
-    const [annee, mois] = periode.split('-').map(Number);
-    const moisPrecedent = mois === 1
-      ? `${annee - 1}-12`
-      : `${annee}-${String(mois - 1).padStart(2, '0')}`;
 
-    // Le RAN = solde d'ouverture = solde de clôture du mois précédent
-    // On reconstruit en partant du solde actuel et en retirant les mvts du mois en cours
-    let soldeRAN = c.solde || 0;
-    const mvtsMois = mvts.filter(m => m.compte === c.id && m.date >= debutPeriode);
-    const trfMois = transferts.filter(t =>
-      (t.compteSrc === c.id || t.compteDst === c.id) && t.date >= debutPeriode
-    );
-
-    for (const m of mvtsMois) {
-      if (m.type === 'entrée') soldeRAN -= (m.montant || 0);
-      else if (m.type === 'sortie') soldeRAN += (m.montant || 0);
+    if (c.soldeInit !== undefined && c.soldeInit !== null) {
+      // Utiliser directement le solde initial importé
+      soldeRAN = c.soldeInit || 0;
+    } else {
+      // Calcul à rebours pour les mois suivants
+      soldeRAN = c.solde || 0;
+      const mvtsMois = mvts.filter(m => m.compte === c.id && m.date >= debutPeriode);
+      const trfMois = transferts.filter(t =>
+        (t.compteSrc === c.id || t.compteDst === c.id) && t.date >= debutPeriode
+      );
+      for (const m of mvtsMois) {
+        if (m.type === 'entrée') soldeRAN -= (m.montant || 0);
+        else if (m.type === 'sortie') soldeRAN += (m.montant || 0);
+      }
+      for (const t of trfMois) {
+        if (t.compteSrc === c.id) soldeRAN += (t.montant || 0);
+        if (t.compteDst === c.id) soldeRAN -= (t.montant || 0);
+      }
+      const versMois = versements.filter(v =>
+        v.compte === c.id && v.statut === 'confirmé' && v.date >= debutPeriode
+      );
+      for (const v of versMois) soldeRAN -= (v.montant || 0);
     }
-    for (const t of trfMois) {
-      if (t.compteSrc === c.id) soldeRAN += (t.montant || 0); // on annule la sortie
-      if (t.compteDst === c.id) soldeRAN -= (t.montant || 0); // on annule l'entrée
-    }
-    // Versements confirmés du mois
-    const versMois = versements.filter(v =>
-      v.compte === c.id && v.statut === 'confirmé' && v.date >= debutPeriode
-    );
-    for (const v of versMois) soldeRAN -= (v.montant || 0);
 
     const ran = {
       id: existant ? existant.id : uid(),
