@@ -3289,8 +3289,7 @@ function renderPetiteCaisse(){
   const dataMois=petiteCaisse.filter(m=>m.date?.slice(0,7)===mois);
   const entrees=dataMois.filter(m=>m.type==='appro').reduce((s,m)=>s+(m.montant||0),0);
   const sorties=dataMois.filter(m=>m.type==='depense'||m.type==='dépense').reduce((s,m)=>s+(m.montant||0),0);
-  // Compte petite caisse pour le RAN
-  const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
+  // Compte petite caisse pour le RAN (déjà déclaré en haut)
   renderSoldeHeader('pcResumeHeader',{
     soldeActuel:solde, compteId:cptPC?.id,
     entrées:entrees, sorties:sorties,
