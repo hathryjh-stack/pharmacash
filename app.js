@@ -372,7 +372,34 @@ function populateSelects(){
   if(ranPer&&!ranPer.value)ranPer.value=today().slice(0,7);
   // Vacations — peupler le select clôture
   populateVacationSelect();
+  // Pré-remplir l'année courante sur tous les champs date vides
+  initDateFields();
 }
+
+// ── Initialise tous les champs date avec l'année courante ──
+function initDateFields() {
+  const anneeStr = String(new Date().getFullYear());
+  // IDs des champs de saisie (modaux) à pré-remplir avec today()
+  const champsSaisie = ['mRDate','mVDate','mVDate2','mcDate','mcDateTravail',
+    'mMDate','mPCDate','smsDate','smsDateVers'];
+  champsSaisie.forEach(id => {
+    const el = document.getElementById(id);
+    if(el && !el.value) el.value = today();
+  });
+  // Sur TOUS les inputs date : au focus, si vide, pré-remplir l'année courante
+  document.querySelectorAll('input[type="date"]').forEach(el => {
+    el.addEventListener('focus', function() {
+      // Si le champ est vide, on met la date du jour pour aider la saisie
+      // L'utilisateur peut ensuite changer le jour/mois facilement
+      if(!this.value) this.value = today();
+    });
+    el.addEventListener('blur', function() {
+      // Si l'utilisateur efface tout, on revide le champ (pour les filtres)
+      // Les modaux gardent la date
+    });
+  });
+}
+window.initDateFields = initDateFields;
 
 // ══════════════════════════════════════════════════════
 // DASHBOARD
@@ -3399,7 +3426,8 @@ function renderPetiteCaisse(){
   const sF=document.getElementById('fPCSearch')?.value?.toLowerCase();
   let data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
   if(dF)data=data.filter(m=>m.date===dF);
-  if(tF)data=data.filter(m=>m.type===tF||(tF==='depense'&&m.type==='dépense'));
+  if(tF==='appro')data=data.filter(m=>m.type==='appro');
+  else if(tF==='depense')data=data.filter(m=>m.type==='depense'||m.type==='dépense');
   if(cF)data=data.filter(m=>m.categorie===cF);
   if(sF)data=data.filter(m=>(m.libelle||'').toLowerCase().includes(sF));
 
