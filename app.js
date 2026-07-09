@@ -1834,7 +1834,10 @@ function renderMvts(){
     if(valActuelle)rubSel.value=valActuelle;
   }
 
-  if(dF)data=data.filter(m=>m.date===dF);
+  const dDebut2=document.getElementById('fMDateDebut')?.value;
+  const dFin2=document.getElementById('fMDateFin')?.value;
+  if(dDebut2)data=data.filter(m=>m.date>=dDebut2);
+  if(dFin2)data=data.filter(m=>m.date<=dFin2);
   if(cF)data=data.filter(m=>m.compte===cF||m.compteSrc===cF||m.compteDst===cF);
   if(tF)data=data.filter(m=>m.type===tF);
   if(rF)data=data.filter(m=>m.rubrique===rF);
@@ -2189,12 +2192,14 @@ function renderCaisseP(){
   }
 
   // Appliquer les filtres
-  const dF=document.getElementById('fCPDate')?.value;
+  const dDebut=document.getElementById('fCPDateDebut')?.value;
+  const dFin=document.getElementById('fCPDateFin')?.value;
   const tF=document.getElementById('fCPType')?.value;
   const rF=document.getElementById('fCPRubrique')?.value;
   const sF=document.getElementById('fCPSearch')?.value?.toLowerCase();
   let data=allData;
-  if(dF)data=data.filter(m=>m.date===dF);
+  if(dDebut)data=data.filter(m=>m.date>=dDebut);
+  if(dFin)data=data.filter(m=>m.date<=dFin);
   if(tF)data=data.filter(m=>m.type===tF);
   if(rF)data=data.filter(m=>m.rubrique===rF);
   if(sF)data=data.filter(m=>(m.libelle||'').toLowerCase().includes(sF)||(m.beneficiaire||'').toLowerCase().includes(sF));
@@ -3421,13 +3426,18 @@ function renderPetiteCaisse(){
 
   // Appliquer filtres
   const dF=document.getElementById('fPCDate')?.value;
+  const dDebut=document.getElementById('fPCDateDebut')?.value;
+  const dFin=document.getElementById('fPCDateFin')?.value;
   const tF=document.getElementById('fPCType')?.value;
   const cF=document.getElementById('fPCCateg')?.value;
   const sF=document.getElementById('fPCSearch')?.value?.toLowerCase();
   let data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
   if(dF)data=data.filter(m=>m.date===dF);
+  if(dDebut)data=data.filter(m=>m.date>=dDebut);
+  if(dFin)data=data.filter(m=>m.date<=dFin);
+  // Filtre type strict — appro ou dépense uniquement
   if(tF==='appro')data=data.filter(m=>m.type==='appro');
-  else if(tF==='depense')data=data.filter(m=>m.type==='depense'||m.type==='dépense');
+  else if(tF==='depense')data=data.filter(m=>m.type!=='appro');
   if(cF)data=data.filter(m=>m.categorie===cF);
   if(sF)data=data.filter(m=>(m.libelle||'').toLowerCase().includes(sF));
 
