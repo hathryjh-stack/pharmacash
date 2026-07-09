@@ -1508,6 +1508,34 @@ async function creerRecetteDepuisClot(clot) {
   return recette;
 }
 
+// ── Synchroniser recettes PSRM depuis toutes les clôtures passées ──
+async function syncRecettesPSRM() {
+  const pdvP = pdvs.find(p => p.type === 'principale');
+  if (!pdvP) { toast('PDV Pharmacie Principale introuvable', 'err'); return; }
+  const clotValides = clotures.filter(c => c.statut === 'validé' && (c.totalMachine || 0) > 0);
+  let nbCrees = 0, nbExistants = 0;
+  for (const clot of clotValides) {
+    const dejaExiste = recettes.find(r => r._clotureId === clot.id);
+    if (dejaExiste) { nbExistants++; continue; }
+    const dateRecette = clot.dateTravail || clot.date;
+    const recette = {
+      id: uid(), date: dateRecette, pdv: pdvP.id, canal: 'CASH',
+      type: 'vente comptoir', montant: clot.totalMachine,
+      ref: `CLT-${clot.id.slice(-6).toUpperCase()}`,
+      notes: `Sync auto — clôture ${clot.vacation} — ${clot.caissiere}`,
+      saisie: currentUser?.nom || 'SYSTEM',
+      _clotureId: clot.id, _auto: true, ts: Date.now()
+    };
+    recettes.push(recette);
+    await saveItem('recettes', recette);
+    nbCrees++;
+  }
+  saveLocal();
+  toast(`✅ ${nbCrees} recette(s) créée(s) depuis les clôtures, ${nbExistants} déjà existante(s)`);
+  renderRecettes(); renderDashboard();
+}
+window.syncRecettesPSRM = syncRecettesPSRM;
+
 async function validerClot(id){
   const c=clotures.find(x=>x.id===id);if(!c)return;
   c.statut='validé';c.valide_par=currentUser.nom;c.valide_ts=Date.now();
