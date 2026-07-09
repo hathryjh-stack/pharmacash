@@ -1546,64 +1546,71 @@ async function saveCloture(){
 window.saveCloture=saveCloture;
 // ── Créer automatiquement une recette depuis une clôture PSRM ──
 async function creerRecetteDepuisClot(clot) {
-  // Vérifier que c'est bien la pharmacie principale
   const pdvP = pdvs.find(p => p.type === 'principale');
   if (!pdvP) return;
-
-  // Éviter les doublons — vérifier si une recette de clôture existe déjà pour cette clôture
-  const dejaExiste = recettes.find(r => r._clotureId === clot.id);
-  if (dejaExiste) return;
-
-  const totalMachine = clot.totalMachine || 0;
-  if (!totalMachine) return; // pas de recette si machine = 0
-
-  // Date = journée travaillée si disponible, sinon date de clôture
   const dateRecette = clot.dateTravail || clot.date;
+  const creees = [];
 
-  const recette = {
-    id: uid(),
-    date: dateRecette,
-    pdv: pdvP.id,
-    canal: 'CASH', // canal principal — la recette globale est en CASH (machine)
-    type: 'vente comptoir',
-    montant: totalMachine,
-    ref: `CLT-${clot.id.slice(-6).toUpperCase()}`,
-    notes: `Généré automatiquement depuis clôture ${clot.vacation} — ${clot.caissiere}`,
-    saisie: currentUser?.nom || 'SYSTEM',
-    _clotureId: clot.id, // lien vers la clôture source
-    _auto: true,
-    ts: Date.now()
-  };
-  recettes.push(recette);
-  await saveItem('recettes', recette);
+  // Créer une recette par canal avec montant > 0
+  const canaux = [
+    { canal: 'CASH', montant: clot.machineCash || 0 },
+    { canal: 'OM',   montant: clot.machineOM   || 0 },
+    { canal: 'MTN',  montant: clot.machineMTN  || 0 },
+    { canal: 'WAVE', montant: clot.machineWAVE || 0 },
+    { canal: 'MOOV', montant: clot.machineMOOV || 0 },
+  ].filter(c => c.montant > 0);
+
+  if (!canaux.length) return null;
+
+  for (const { canal, montant } of canaux) {
+    // Vérifier doublon pour ce canal+clôture
+    const dejaExiste = recettes.find(r =>
+      r._clotureId === clot.id && r.canal === canal
+    );
+    if (dejaExiste) continue;
+
+    const recette = {
+      id: uid(),
+      date: dateRecette,
+      pdv: pdvP.id,
+      canal,
+      type: 'vente comptoir',
+      montant,
+      ref: `CLT-${clot.id.slice(-6).toUpperCase()}-${canal}`,
+      notes: `Auto — ${clot.caissiere} — ${clot.vacation}`,
+      saisie: currentUser?.nom || 'SYSTEM',
+      _clotureId: clot.id,
+      _auto: true,
+      ts: Date.now()
+    };
+    recettes.push(recette);
+    await saveItem('recettes', recette);
+    creees.push(recette);
+  }
   saveLocal();
-  return recette;
+  return creees.length ? creees : null;
 }
 
 // ── Synchroniser recettes PSRM depuis toutes les clôtures passées ──
 async function syncRecettesPSRM() {
   const pdvP = pdvs.find(p => p.type === 'principale');
   if (!pdvP) { toast('PDV Pharmacie Principale introuvable', 'err'); return; }
+  // Supprimer d'abord les recettes auto globales (ancien format)
+  const globales = recettes.filter(r => r._auto && r._clotureId && r.canal === 'CASH' &&
+    r.notes && r.notes.includes('automatiquement'));
+  for (const r of globales) {
+    recettes = recettes.filter(x => x.id !== r.id);
+    await delItem('recettes', r.id);
+  }
   const clotValides = clotures.filter(c => c.statut === 'validé' && (c.totalMachine || 0) > 0);
   let nbCrees = 0, nbExistants = 0;
   for (const clot of clotValides) {
-    const dejaExiste = recettes.find(r => r._clotureId === clot.id);
-    if (dejaExiste) { nbExistants++; continue; }
-    const dateRecette = clot.dateTravail || clot.date;
-    const recette = {
-      id: uid(), date: dateRecette, pdv: pdvP.id, canal: 'CASH',
-      type: 'vente comptoir', montant: clot.totalMachine,
-      ref: `CLT-${clot.id.slice(-6).toUpperCase()}`,
-      notes: `Sync auto — clôture ${clot.vacation} — ${clot.caissiere}`,
-      saisie: currentUser?.nom || 'SYSTEM',
-      _clotureId: clot.id, _auto: true, ts: Date.now()
-    };
-    recettes.push(recette);
-    await saveItem('recettes', recette);
-    nbCrees++;
+    const recs = await creerRecetteDepuisClot(clot);
+    if (recs && recs.length) nbCrees += recs.length;
+    else nbExistants++;
   }
   saveLocal();
-  toast(`✅ ${nbCrees} recette(s) créée(s) depuis les clôtures, ${nbExistants} déjà existante(s)`);
+  toast(`✅ ${nbCrees} recette(s) par canal créée(s), ${globales.length} ancienne(s) supprimée(s)`);
   renderRecettes(); renderDashboard();
 }
 window.syncRecettesPSRM = syncRecettesPSRM;
@@ -1790,15 +1797,17 @@ function ouvrirTransfertRapide(compteMMId){
 window.ouvrirTransfertRapide=ouvrirTransfertRapide;
 
 function ouvrirMouvementsCompte(compteId){
-  // Filtre les mouvements sur ce compte et fait défiler vers le journal
   const fmc=document.getElementById('fMCompte');
   if(fmc)fmc.value=compteId;
+  // Filtre automatique : du 1er du mois en cours à aujourd'hui
+  const debutEl=document.getElementById('fMDateDebut');
+  const finEl=document.getElementById('fMDateFin');
+  if(debutEl)debutEl.value=today().slice(0,7)+'-01';
+  if(finEl)finEl.value=today();
   renderMvts();
-  // Scroll vers le journal des mouvements
   const mvtSection=document.getElementById('mvtTbody');
   if(mvtSection)mvtSection.closest('.card')?.scrollIntoView({behavior:'smooth',block:'start'});
-  // Met en surbrillance le filtre actif
-  toast(`Mouvements filtrés — ${comptes.find(c=>c.id===compteId)?.nom||compteId}`);
+  toast(`📋 Mouvements — ${comptes.find(c=>c.id===compteId)?.nom||compteId} — du 01/${today().slice(5,7)} au ${fmtD(today())}`);
 }
 window.ouvrirMouvementsCompte=ouvrirMouvementsCompte;
 function renderMvts(){

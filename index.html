@@ -482,6 +482,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           <div class="inner-tab" data-tab="mm-pdv" onclick="adminTab('mm-pdv')">📱 MM par PDV</div>
           <div class="inner-tab" data-tab="caissieresdb" onclick="adminTab('caissieresdb')">👤 Caissières</div>
           <div class="inner-tab" data-tab="vacations" onclick="adminTab('vacations')">⏰ Vacations</div>
+          <div class="inner-tab" data-tab="vacations" onclick="adminTab('vacations')">⏰ Vacations</div>
         </div>
         <div id="adm-pdv"><div class="card"><div class="card-header"><span class="card-title">Points de vente & Dépôts</span><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="imprimerConfig('pdv')">🖨️ Imprimer</button><button class="btn btn-green btn-sm" onclick="openPDVModal()">+ Ajouter</button></div></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Type</th><th>Responsable</th><th>Périodicité</th><th>N° MM locaux</th><th>Compte défaut</th><th></th></tr></thead><tbody id="pdvTbody"></tbody></table></div></div></div>
         <div id="adm-banques" style="display:none"><div class="card"><div class="card-header"><span class="card-title">Banques & Caisses</span><div style="display:flex;gap:8px"><button class="btn btn-ghost btn-sm" onclick="imprimerConfig('banques')">🖨️ Imprimer</button><button class="btn btn-amber btn-sm" onclick="openImportSoldes()">📥 Importer soldes Excel</button><button class="btn btn-green btn-sm" onclick="openCompteModal()">+ Ajouter</button></div></div><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>Opérateur</th><th>N° Compte / RIB</th><th>Notes / IBAN</th><th>Solde actuel</th><th>Statut</th><th></th></tr></thead><tbody id="cptTbody"></tbody></table></div></div></div>
@@ -853,5 +854,35 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mCaissiere')">Annuler</button><button class="btn btn-green" onclick="saveCaissiere()">Enregistrer</button></div>
           </div>
         </div>
+
+<!-- Section Vacations (adm-vacations) -->
+<div id="adm-vacations" style="display:none">
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">⏰ Plages horaires (Vacations)</span>
+      <button class="btn btn-green btn-sm" onclick="ouvrirModalVacation()">+ Ajouter</button>
+    </div>
+    <div style="font-size:.75rem;color:var(--text3);padding:0 4px 10px">Ces plages apparaissent dans le menu déroulant lors de la clôture de caisse.</div>
+    <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Libellé</th><th>Heure début</th><th>Heure fin</th><th></th></tr></thead><tbody id="vacationsTbody"></tbody></table></div>
+  </div>
+</div>
+
+<!-- Modal vacation -->
+<div class="modal-ov" id="mVacation">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-hdr"><div class="modal-title">⏰ Plage horaire</div><button class="close-x" onclick="closeM('mVacation')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg"><label>Libellé *</label><input type="text" id="mVacLibelle" placeholder="Ex: Matin, Nuit, Journée…"></div>
+      <div class="fg2">
+        <div class="fg"><label>Heure début</label><input type="text" id="mVacDebut" placeholder="Ex: 07h"></div>
+        <div class="fg"><label>Heure fin</label><input type="text" id="mVacFin" placeholder="Ex: 14h"></div>
+      </div>
+      <div class="fg"><label>Statut</label>
+        <select id="mVacStatut"><option value="actif">✅ Actif</option><option value="inactif">❌ Inactif</option></select>
+      </div>
+    </div>
+    <div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mVacation')">Annuler</button><button class="btn btn-green" onclick="saveVacation()">Enregistrer</button></div>
+  </div>
+</div>
 </body>
 </html>
