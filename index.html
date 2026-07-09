@@ -221,6 +221,12 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <select class="fi" id="rPeriode" onchange="onPeriodeChange()" style="max-width:180px"><option value="jour">Aujourd'hui</option><option value="semaine" selected>Cette semaine</option><option value="mois">Ce mois</option><option value="custom">Personnalisé</option></select>
             <div id="rCustomDates" style="display:none;gap:6px"><input type="date" id="rDebut" class="fi" onchange="renderRapport()" style="max-width:140px"><input type="date" id="rFin" class="fi" onchange="renderRapport()" style="max-width:140px"></div>
           </div></div>
+        <!-- Onglets vues rapport -->
+        <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+          <button class="btn btn-sm" id="rVueGlobale" onclick="setRapportVue('globale')" style="background:var(--green);color:#fff">🌐 Global</button>
+          <button class="btn btn-ghost btn-sm" id="rVueDepots" onclick="setRapportVue('depots')">🏪 Dépôts</button>
+          <button class="btn btn-ghost btn-sm" id="rVuePSRM" onclick="setRapportVue('psrm')">🏛️ Pharmacie Principale</button>
+        </div>
         <div id="rapportContent"></div>
       </div>
       <!-- CAISSE PRINCIPALE -->
