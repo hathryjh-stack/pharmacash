@@ -216,7 +216,18 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
         <div class="compte-cards" id="bqComptes"></div>
         <div id="mvtsResumeHeader"></div>
         <div class="card"><div class="card-header"><span class="card-title">Journal des mouvements</span></div>
-          <div class="filters"><input type="date" id="fMDate" class="fi" onchange="renderMvts()"><select id="fMCompte" class="fi" onchange="renderMvts()"><option value="">Tous comptes</option></select><select id="fMType" class="fi" onchange="renderMvts()"><option value="">Tous types</option><option value="entrée">Entrées</option><option value="sortie">Sorties</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fMDate','fMCompte','fMType');renderMvts()">✕</button></div>
+          <div class="filters">
+            <input type="date" id="fMDate" class="fi" onchange="renderMvts()">
+            <select id="fMCompte" class="fi" onchange="renderMvts()"><option value="">Tous comptes</option></select>
+            <select id="fMType" class="fi" onchange="renderMvts()">
+              <option value="">Tous types</option>
+              <option value="entrée">↑ Entrées</option>
+              <option value="sortie">↓ Sorties</option>
+            </select>
+            <select id="fMRubrique" class="fi" onchange="renderMvts()"><option value="">Toutes rubriques</option></select>
+            <input type="text" id="fMSearch" class="fi" oninput="renderMvts()" placeholder="🔍 Rechercher libellé…" style="min-width:180px">
+            <button class="btn btn-ghost btn-xs" onclick="document.getElementById('fMDate').value='';document.getElementById('fMCompte').value='';document.getElementById('fMType').value='';document.getElementById('fMRubrique').value='';document.getElementById('fMSearch').value='';renderMvts()">✕</button>
+          </div>
           <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>Compte</th><th>Type</th><th>Libellé</th><th>Réf.</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="mvtTbody"></tbody></table></div>
         </div>
       </div>
@@ -289,6 +300,17 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           </div>
         </div>
         <div id="pcResumeHeader"></div>
+        <div class="filters" style="margin-bottom:12px">
+          <input type="date" id="fPCDate" class="fi" onchange="renderPetiteCaisse()">
+          <select id="fPCType" class="fi" onchange="renderPetiteCaisse()">
+            <option value="">Tous types</option>
+            <option value="appro">↑ Approvisionnements</option>
+            <option value="depense">↓ Dépenses</option>
+          </select>
+          <select id="fPCCateg" class="fi" onchange="renderPetiteCaisse()"><option value="">Toutes catégories</option></select>
+          <input type="text" id="fPCSearch" class="fi" oninput="renderPetiteCaisse()" placeholder="🔍 Rechercher libellé…" style="min-width:180px">
+          <button class="btn btn-ghost btn-xs" onclick="document.getElementById('fPCDate').value='';document.getElementById('fPCType').value='';document.getElementById('fPCCateg').value='';document.getElementById('fPCSearch').value='';renderPetiteCaisse()">✕</button>
+        </div>
         <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date & Heure</th><th>Type</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Solde après</th><th>Référence</th><th>Saisi par</th></tr></thead><tbody id="pcTbody"></tbody></table></div></div>
       </div>
       <!-- SUIVI CAISSIÈRES -->

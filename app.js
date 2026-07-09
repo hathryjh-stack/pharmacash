@@ -3364,46 +3364,80 @@ window.onRTypeChange=onRTypeChange;
 // PETITE CAISSE (v4.1)
 // ══════════════════════════════════════════════════════
 function renderPetiteCaisse(){
-  // Solde = soldeInit du compte + mouvements saisis
   const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
   const soldeInit=cptPC?.soldeInit||0;
   const mvtsPC=petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
   const solde=soldeInit+mvtsPC;
   const tbody=document.getElementById('pcTbody');
-  const data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
   el('pcSolde',fmt(solde)+' '+DEVISE);
   const soldeEl=document.getElementById('pcSoldeEl');
   if(soldeEl)soldeEl.style.color=solde>=0?'var(--green)':'var(--red)';
-  // Résumé mois courant
   const mois=today().slice(0,7);
   const dataMois=petiteCaisse.filter(m=>m.date?.slice(0,7)===mois);
   const entrees=dataMois.filter(m=>m.type==='appro').reduce((s,m)=>s+(m.montant||0),0);
   const sorties=dataMois.filter(m=>m.type==='depense'||m.type==='dépense').reduce((s,m)=>s+(m.montant||0),0);
-  // Compte petite caisse pour le RAN (déjà déclaré en haut)
   renderSoldeHeader('pcResumeHeader',{
     soldeActuel:solde, compteId:cptPC?.id,
     entrées:entrees, sorties:sorties,
     label:'Petite Caisse', couleur:'var(--amber)'
   });
   if(!tbody)return;
-  if(!data.length){tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><div class="ei">💰</div>Aucun mouvement petite caisse</div></td></tr>';return;}
-  let running=0;
-  const rows=[...data].reverse().map(m=>{
+
+  // Peupler filtre catégories
+  const categSel=document.getElementById('fPCCateg');
+  if(categSel){
+    const categs=[...new Set(petiteCaisse.map(m=>m.categorie).filter(Boolean))].sort();
+    const valAct=categSel.value;
+    categSel.innerHTML='<option value="">Toutes catégories</option>'+categs.map(c=>`<option value="${c}">${c}</option>`).join('');
+    if(valAct)categSel.value=valAct;
+  }
+
+  // Appliquer filtres
+  const dF=document.getElementById('fPCDate')?.value;
+  const tF=document.getElementById('fPCType')?.value;
+  const cF=document.getElementById('fPCCateg')?.value;
+  const sF=document.getElementById('fPCSearch')?.value?.toLowerCase();
+  let data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+  if(dF)data=data.filter(m=>m.date===dF);
+  if(tF)data=data.filter(m=>m.type===tF||(tF==='depense'&&m.type==='dépense'));
+  if(cF)data=data.filter(m=>m.categorie===cF);
+  if(sF)data=data.filter(m=>(m.libelle||'').toLowerCase().includes(sF));
+
+  if(!data.length){
+    tbody.innerHTML=`<tr><td colspan="9"><div class="empty-state"><div class="ei">💰</div>${petiteCaisse.length?'Aucun résultat pour ces filtres':'Aucun mouvement petite caisse'}</div></td></tr>`;
+    return;
+  }
+
+  // Recalcul soldes chronologiques depuis soldeInit
+  const allChronologique=[...petiteCaisse].sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
+  let running=soldeInit;
+  const soldesPC={};
+  for(const m of allChronologique){
     running+=m.type==='appro'?m.montant:-(m.montant||0);
-    return{...m,soldeApres:running};
-  }).reverse();
-  tbody.innerHTML=rows.map((m,i)=>`<tr>
+    soldesPC[m.id]=running;
+  }
+
+  // Sous-total filtré
+  const hasFilter=dF||tF||cF||sF;
+  const totFiltre=data.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
+  const sousTotalHtml=hasFilter?`
+    <tr style="background:var(--surface2);font-weight:700;font-size:.78rem">
+      <td colspan="5" style="text-align:right;padding:6px 10px;color:var(--text2)">${data.length} opération(s) filtrée(s)</td>
+      <td class="amt ${totFiltre>=0?'pos':'neg'}">${totFiltre>=0?'+':''}${fmt(Math.abs(totFiltre))}</td>
+      <td colspan="3"></td>
+    </tr>`:'';
+  tbody.innerHTML=data.map((m,i)=>`<tr>
     ${rowNum(i)}
     <td>${fmtD(m.date)} ${m.heure||''}</td>
     <td><span class="badge ${m.type==='appro'?'bg':'br'}">${m.type==='appro'?'Approvisionnement':'Dépense'}</span></td>
     <td style="font-size:.82rem">${m.libelle||'—'}</td>
     <td style="font-size:.78rem;color:var(--text2)">${m.categorie||'—'}</td>
     <td class="amt ${m.type==='appro'?'pos':'neg'}">${m.type==='appro'?'+':'-'}${fmt(m.montant)}</td>
-    <td class="amt">${fmt(m.soldeApres)}</td>
+    <td class="amt ${(soldesPC[m.id]||0)>=0?'':'neg'}">${fmt(soldesPC[m.id]||0)}</td>
     <td style="font-size:.68rem;color:var(--text3);font-family:monospace">${m.ref||'—'}</td>
     <td style="font-size:.75rem;color:var(--text2)">${m.saisie||'—'}</td>
     <td><button class="btn btn-red btn-xs" onclick="delPCMvt('${m.id}')" title="Supprimer">✕</button></td>
-  </tr>`).join('');
+  </tr>`).join('') + sousTotalHtml;
 }
 async function delPCMvt(id){
   if(!confirm('Supprimer ce mouvement petite caisse ?'))return;
@@ -4252,7 +4286,109 @@ function ouvrirRecettesPDV(pdvId, canal) {
 window.ouvrirRecettesPDV=ouvrirRecettesPDV;
 // ══════════════════════════════════════════════════════
 
-// ── Obtenir le RAN actif pour un compte et une période ─
+// ── Détail opérations depuis la page RAN ─────────────
+function ouvrirDetailCompteRAN(compteId, nomCompte) {
+  const debut = today().slice(0,7) + '-01';
+  const fin = today();
+  const mois = today().slice(0,7);
+
+  // Récupérer les mouvements du compte
+  const mvtsCpt = mvts.filter(m =>
+    (m.compte === compteId || m.compteSrc === compteId || m.compteDst === compteId)
+    && m.date >= debut && m.date <= fin
+  ).sort((a,b) => a.date.localeCompare(b.date));
+
+  // Versements confirmés vers ce compte
+  const versCpt = versements.filter(v =>
+    v.compte === compteId && v.statut === 'confirmé'
+    && v.date >= debut && v.date <= fin
+  ).sort((a,b) => a.date.localeCompare(b.date));
+
+  const totEntrees = mvtsCpt.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0);
+  const totSorties = mvtsCpt.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0);
+  const totVers = versCpt.reduce((s,v)=>s+(v.montant||0),0);
+
+  // RAN du compte
+  const ran = rapportsNouveaux.find(r => r.compteId === compteId && r.periode === mois);
+  const soldeOuv = ran ? ran.soldeOuverture : null;
+  const cpt = comptes.find(c => c.id === compteId);
+  const soldeAct = cpt?.solde || 0;
+
+  const mvtsHtml = mvtsCpt.length
+    ? mvtsCpt.map((m,i) => `<tr>
+        <td style="color:var(--text3);font-size:.68rem;text-align:right">${i+1}</td>
+        <td>${fmtD(m.date)}</td>
+        <td><span class="badge ${m.type==='entrée'?'bg':'br'}" style="font-size:.65rem">${m.type==='entrée'?'↑ Entrée':'↓ Sortie'}</span></td>
+        <td style="font-size:.78rem;color:var(--text2)">${m.rubrique||m.libelle||'—'}</td>
+        <td style="font-size:.8rem">${m.libelle||'—'}</td>
+        <td class="amt ${m.type==='entrée'?'pos':'neg'}">${m.type==='entrée'?'+':'-'}${fmt(m.montant)}</td>
+        <td style="font-size:.72rem;color:var(--text3)">${m.saisie||'—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:14px">Aucun mouvement ce mois</td></tr>';
+
+  const versHtml = versCpt.length
+    ? versCpt.map((v,i) => {
+        const pdvNom = pdvs.find(p=>p.id===v.pdv)?.nom || v.pdv;
+        return `<tr>
+          <td style="color:var(--text3);font-size:.68rem;text-align:right">${i+1}</td>
+          <td>${fmtD(v.date)}</td>
+          <td>${pdvBadge(v.pdv)}</td>
+          <td>${mmBadge(v.type)}</td>
+          <td class="amt pos">+${fmt(v.montant)}</td>
+          <td style="font-size:.72rem;color:var(--text3)">${v.ref||'—'}</td>
+        </tr>`;
+      }).join('')
+    : '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:14px">Aucun versement ce mois</td></tr>';
+
+  const html = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:14px">
+      <div class="stat-card" style="border-left:3px solid var(--text3)">
+        <div class="stat-lbl">📅 Solde ouverture</div>
+        <div class="stat-val" style="color:${soldeOuv!==null?(soldeOuv>=0?'var(--green)':'var(--red)'):'var(--text3)'}">
+          ${soldeOuv!==null?fmt(soldeOuv):'—'}
+        </div>
+      </div>
+      <div class="stat-card" style="border-left:3px solid var(--green)">
+        <div class="stat-lbl">↑ Entrées</div>
+        <div class="stat-val" style="color:var(--green)">${fmt(totEntrees)}</div>
+      </div>
+      <div class="stat-card" style="border-left:3px solid var(--red)">
+        <div class="stat-lbl">↓ Sorties</div>
+        <div class="stat-val" style="color:var(--red)">${fmt(totSorties)}</div>
+      </div>
+      ${totVers>0?`<div class="stat-card" style="border-left:3px solid var(--blue)">
+        <div class="stat-lbl">💸 Versements PDV</div>
+        <div class="stat-val" style="color:var(--blue)">${fmt(totVers)}</div>
+      </div>`:''}
+      <div class="stat-card" style="border-left:3px solid var(--amber)">
+        <div class="stat-lbl">💰 Solde actuel</div>
+        <div class="stat-val" style="color:${soldeAct>=0?'var(--amber)':'var(--red)'}">${fmt(soldeAct)}</div>
+      </div>
+    </div>
+    ${mvtsCpt.length?`
+    <div style="font-weight:700;color:var(--cyan);margin-bottom:6px;font-size:.85rem">📋 Mouvements du mois (${mvtsCpt.length})</div>
+    <div class="tbl-wrap" style="margin-bottom:14px">
+      <table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Rubrique</th><th>Libellé</th><th>Montant</th><th>Saisi par</th></tr></thead>
+      <tbody>${mvtsHtml}</tbody>
+      <tr style="background:var(--surface2);font-weight:700">
+        <td colspan="5" style="text-align:right;padding:6px">NET</td>
+        <td class="amt ${totEntrees-totSorties>=0?'pos':'neg'}">${totEntrees-totSorties>=0?'+':''}${fmt(totEntrees-totSorties)}</td>
+        <td></td>
+      </tr>
+      </table>
+    </div>`:''}
+    ${versCpt.length?`
+    <div style="font-weight:700;color:var(--blue);margin-bottom:6px;font-size:.85rem">💸 Versements PDV reçus (${versCpt.length})</div>
+    <div class="tbl-wrap">
+      <table><thead><tr><th>#</th><th>Date</th><th>PDV</th><th>Type</th><th>Montant</th><th>Réf.</th></tr></thead>
+      <tbody>${versHtml}</tbody>
+      </table>
+    </div>`:''}
+    ${!mvtsCpt.length&&!versCpt.length?'<div class="empty-state"><div class="ei">📊</div>Aucune opération ce mois sur ce compte</div>':''}`;
+
+  afficherModalDetail(`📊 ${nomCompte} — ${fmtD(debut)} au ${fmtD(fin)}`, html);
+}
+window.ouvrirDetailCompteRAN = ouvrirDetailCompteRAN;
 function getRAN(compteId, periode) {
   // periode = "YYYY-MM" (ex: "2026-07")
   return rapportsNouveaux.find(r => r.compteId === compteId && r.periode === periode);
@@ -4465,7 +4601,7 @@ function renderRAN() {
         })()
       : '';
 
-    return `<tr>
+    return `<tr style="cursor:pointer" onclick="ouvrirDetailCompteRAN('${c.id}','${c.nom}')" title="Voir les opérations de ${c.nom}">
       ${rowNum(i)}
       <td>
         <div style="font-weight:600">${c.nom}</div>
