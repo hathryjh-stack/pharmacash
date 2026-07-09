@@ -1064,6 +1064,7 @@ window.openVersModal=openVersModal;
 function updateLigneMontant(i,val){
   lignesVersement[i].montant=parseFloat(val)||0;
   updateTotalVers();
+  _updateNetDisplay(i);
 }
 function updateLigneRef(i,val){ lignesVersement[i].ref=val; }
 function updateLigneType(i,val){ lignesVersement[i].type=val; }
@@ -1131,7 +1132,7 @@ function renderLignesVersement(){
       </div>
       <div style="background:var(--surface3);border-radius:6px;padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center">
         <span style="font-size:.75rem;color:var(--text2)">💰 Montant net crédité au compte</span>
-        <span style="font-weight:800;font-size:1rem;color:${((l.montant||0)-(l.fraisOp||0)-(l.fraisTimbre||0))>=0?'var(--green)':'var(--red)'}">
+        <span id="netDisplay_${i}" style="font-weight:800;font-size:1rem;color:${((l.montant||0)-(l.fraisOp||0)-(l.fraisTimbre||0))>=0?'var(--green)':'var(--red)'}">
           ${fmt((l.montant||0)-(l.fraisOp||0)-(l.fraisTimbre||0))} ${DEVISE}
         </span>
       </div>
@@ -1142,14 +1143,31 @@ function renderLignesVersement(){
 }
 function updateLigneFraisOp(i,val){
   lignesVersement[i].fraisOp=parseFloat(val)||0;
-  renderLignesVersement();
+  // Mettre à jour uniquement l'affichage du net sans re-rendre tout le DOM
+  _updateNetDisplay(i);
 }
 window.updateLigneFraisOp=updateLigneFraisOp;
 function updateLigneFraisTimbre(i,val){
   lignesVersement[i].fraisTimbre=parseFloat(val)||0;
-  renderLignesVersement();
+  _updateNetDisplay(i);
 }
 window.updateLigneFraisTimbre=updateLigneFraisTimbre;
+
+// Mise à jour du montant net sans re-rendre le DOM (préserve le focus)
+function _updateNetDisplay(i){
+  const l=lignesVersement[i];
+  const net=Math.max(0,(l.montant||0)-(l.fraisOp||0)-(l.fraisTimbre||0));
+  const netEl=document.getElementById(`netDisplay_${i}`);
+  if(netEl){
+    netEl.textContent=fmt(net)+' '+DEVISE;
+    netEl.style.color=net>=0?'var(--green)':'var(--red)';
+  }
+  // Mettre à jour le total
+  const total=lignesVersement.reduce((s,l)=>s+(l.montant||0),0);
+  const totalEl=document.getElementById('versTotal');
+  if(totalEl)totalEl.textContent=fmt(total)+' '+DEVISE;
+}
+window._updateNetDisplay=_updateNetDisplay;
 function addLigneVersement(){
   lignesVersement.push({type:'OM',compte:comptes[0]?.id||'',montant:0,fraisOp:0,fraisTimbre:0,ref:''});
   renderLignesVersement();
