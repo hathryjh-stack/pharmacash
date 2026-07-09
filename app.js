@@ -629,7 +629,10 @@ window.exportVersements=exportVersements;
 // ── EXPORT PETITE CAISSE ──────────────────────────────
 function exportPetiteCaisse(format){
   const data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
-  const solde=petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
+  const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
+  const soldeInit=cptPC?.soldeInit||0;
+  const mvtsPC=petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
+  const solde=soldeInit+mvtsPC;
   exportUniversel('Petite Caisse',
     ['Date & Heure','Type','Libellé','Catégorie','Référence','Montant (FCFA)','Solde après','Saisi par'],
     data.map(m=>[`${fmtD(m.date)} ${m.heure||''}`,m.type==='appro'?'Approvisionnement':'Dépense',m.libelle||'—',m.categorie||'—',m.ref||'—',(m.type==='appro'?'+':'-')+fmt(m.montant),fmt(m.soldeApres||0),m.saisie||'—']),
@@ -3271,7 +3274,11 @@ window.onRTypeChange=onRTypeChange;
 // PETITE CAISSE (v4.1)
 // ══════════════════════════════════════════════════════
 function renderPetiteCaisse(){
-  const solde=petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
+  // Solde = soldeInit du compte + mouvements saisis
+  const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
+  const soldeInit=cptPC?.soldeInit||0;
+  const mvtsPC=petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
+  const solde=soldeInit+mvtsPC;
   const tbody=document.getElementById('pcTbody');
   const data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
   el('pcSolde',fmt(solde)+' '+DEVISE);
