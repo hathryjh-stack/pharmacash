@@ -2179,6 +2179,17 @@ function renderCaisseP(){
       <td class="amt ${totalFiltre>=0?'pos':'neg'}" style="padding:6px 8px">${totalFiltre>=0?'+':''}${fmt(Math.abs(totalFiltre))}</td>
       <td colspan="3"></td>
     </tr>`:'';
+  // Recalcul des soldes cumulatifs dans l'ordre chronologique
+  // On part du soldeInit et on applique les mvts du plus ancien au plus récent
+  const dataChronologique = [...allData].sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
+  let soldeCourant = cp?.soldeInit || 0;
+  const soldesRecalcules = {};
+  for (const m of dataChronologique) {
+    if(m.type==='entrée') soldeCourant += (m.montant||0);
+    else if(m.type==='sortie') soldeCourant -= (m.montant||0);
+    soldesRecalcules[m.id] = soldeCourant;
+  }
+
   tbody.innerHTML=data.map((m,i)=>`<tr>
     ${rowNum(i)}
     <td>${fmtD(m.date)}</td>
@@ -2188,7 +2199,7 @@ function renderCaisseP(){
     <td style="font-size:.78rem">${m.benef_nom||'—'}</td>
     <td style="font-size:.72rem;font-family:monospace;color:var(--text3)">${m.ref||'—'}</td>
     <td class="amt ${m.type==='entrée'?'pos':'neg'}">${m.type==='entrée'?'+':'-'}${fmt(m.montant)}</td>
-    <td class="amt">${fmt(m.soldeApres||0)}</td>
+    <td class="amt ${(soldesRecalcules[m.id]||0)>=0?'':'neg'}">${fmt(soldesRecalcules[m.id]||0)}</td>
     <td style="font-size:.75rem;color:var(--text2)">${m.saisie||'—'}</td>
     <td><button class="btn btn-red btn-xs" onclick="delCPMvt('${m.id}')">✕</button></td>
   </tr>`).join('') + sousTotalHtml;
