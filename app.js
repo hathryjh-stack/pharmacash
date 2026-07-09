@@ -692,11 +692,35 @@ window.exportSuiviCaissiere=exportSuiviCaissiere;
 // ══════════════════════════════════════════════════════
 // RECETTES
 // ══════════════════════════════════════════════════════
+// ── Gestion des vues Recettes ─────────────────────────
+let _recettesVue = 'globale';
+function setRecettesVue(vue) {
+  _recettesVue = vue;
+  ['globale','depots','psrm'].forEach(v => {
+    const btn = document.getElementById('rRec'+v.charAt(0).toUpperCase()+v.slice(1));
+    if (!btn) return;
+    btn.style.background = v === vue ? 'var(--green)' : '';
+    btn.style.color = v === vue ? '#fff' : '';
+    btn.className = v === vue ? 'btn btn-sm' : 'btn btn-ghost btn-sm';
+  });
+  renderRecettes();
+}
+window.setRecettesVue = setRecettesVue;
+
 function renderRecettes(){
   let data=[...recettes].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
   const dF=document.getElementById('fRDate').value,pF=document.getElementById('fRPDV').value,cF=document.getElementById('fRCanal').value;
   if(currentUser.role!=='admin'&&currentUser.pdv)data=data.filter(r=>r.pdv===currentUser.pdv);
+  // Filtre par vue (Global / Dépôts / PSRM)
+  const pdvP=pdvs.find(p=>p.type==='principale');
+  if(_recettesVue==='psrm'&&pdvP) data=data.filter(r=>r.pdv===pdvP.id);
+  else if(_recettesVue==='depots'&&pdvP) data=data.filter(r=>r.pdv!==pdvP.id);
   if(dF)data=data.filter(r=>r.date===dF);if(pF)data=data.filter(r=>r.pdv===pF);if(cF)data=data.filter(r=>r.canal===cF);
+  // Afficher le total de la vue
+  const total=data.reduce((s,r)=>s+(r.montant||0),0);
+  const vueLabel=_recettesVue==='psrm'?'🏛️ Pharmacie Principale':_recettesVue==='depots'?'🏪 Dépôts':'🌐 Global';
+  const subEl=document.querySelector('#pg-recettes .pg-sub');
+  if(subEl)subEl.textContent=`${vueLabel} — ${data.length} recette(s) — Total : ${fmt(total)} ${DEVISE}`;
   const tbody=document.getElementById('recTbody');
   if(!data.length){tbody.innerHTML='<tr><td colspan="8"><div class="empty-state"><div class="ei">📋</div>Aucune recette</div></td></tr>';return;}
   tbody.innerHTML=data.map((r,i)=>`<tr>

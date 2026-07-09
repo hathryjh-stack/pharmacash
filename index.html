@@ -158,6 +158,11 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <button class="btn btn-ghost btn-sm" onclick="openSMSModal()">📲 SMS / WhatsApp</button>
             <button class="btn btn-green btn-sm" onclick="openRecetteModal()">+ Recette</button>
           </div></div>
+        <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+          <button class="btn btn-sm" id="rRecGlobale" onclick="setRecettesVue('globale')" style="background:var(--green);color:#fff">🌐 Global</button>
+          <button class="btn btn-ghost btn-sm" id="rRecDepots" onclick="setRecettesVue('depots')">🏪 Dépôts</button>
+          <button class="btn btn-ghost btn-sm" id="rRecPSRM" onclick="setRecettesVue('psrm')">🏛️ Pharmacie Principale</button>
+        </div>
         <div class="filters"><input type="date" id="fRDate" class="fi" onchange="renderRecettes()"><select id="fRPDV" class="fi" onchange="renderRecettes()"><option value="">Tous PDV</option></select><select id="fRCanal" class="fi" onchange="renderRecettes()"><option value="">Tous canaux</option></select><button class="btn btn-ghost btn-sm" onclick="resetFilter('fRDate','fRPDV','fRCanal');renderRecettes()">✕</button></div>
         <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>PDV</th><th>Canal</th><th>Type</th><th>Montant</th><th>Réf.</th><th>Saisi par</th><th></th></tr></thead><tbody id="recTbody"></tbody></table></div></div>
       </div>
