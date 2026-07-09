@@ -1777,7 +1777,23 @@ function renderMvts(){
   ].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
   let data=allMvts;
   const dF=document.getElementById('fMDate').value,tF=document.getElementById('fMType').value;
-  if(dF)data=data.filter(m=>m.date===dF);if(cF)data=data.filter(m=>m.compte===cF||m.compteSrc===cF||m.compteDst===cF);if(tF)data=data.filter(m=>m.type===tF);
+  const rF=document.getElementById('fMRubrique')?.value;
+  const sF=document.getElementById('fMSearch')?.value?.toLowerCase();
+
+  // Peupler rubriques dynamiquement
+  const rubSel=document.getElementById('fMRubrique');
+  if(rubSel){
+    const rubriques=[...new Set(allMvts.map(m=>m.rubrique).filter(Boolean))].sort();
+    const valActuelle=rubSel.value;
+    rubSel.innerHTML='<option value="">Toutes rubriques</option>'+rubriques.map(r=>`<option value="${r}">${r}</option>`).join('');
+    if(valActuelle)rubSel.value=valActuelle;
+  }
+
+  if(dF)data=data.filter(m=>m.date===dF);
+  if(cF)data=data.filter(m=>m.compte===cF||m.compteSrc===cF||m.compteDst===cF);
+  if(tF)data=data.filter(m=>m.type===tF);
+  if(rF)data=data.filter(m=>m.rubrique===rF);
+  if(sF)data=data.filter(m=>(m.libelle||'').toLowerCase().includes(sF)||(m.ref||'').toLowerCase().includes(sF));
   const tbody=document.getElementById('mvtTbody');
   if(!data.length){tbody.innerHTML='<tr><td colspan="9"><div class="empty-state"><div class="ei">🏦</div>Aucun mouvement</div></td></tr>';return;}
   tbody.innerHTML=data.map((m,i)=>{
@@ -1797,6 +1813,20 @@ function renderMvts(){
       <td>${currentUser.role==='admin'?`<button class="btn btn-red btn-xs" onclick="delMvt('${m.id}','${m._src}')">✕</button>`:''}</td>
     </tr>`;
   }).join('');
+  // Sous-total si filtres actifs
+  const hasFilter=dF||cF||tF||rF||sF;
+  if(hasFilter){
+    const totE=data.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0);
+    const totS=data.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0);
+    document.getElementById('mvtTbody').innerHTML+=`
+      <tr style="background:var(--surface2);font-weight:700;font-size:.78rem">
+        <td colspan="5" style="text-align:right;padding:6px 10px;color:var(--text2)">${data.length} opération(s)</td>
+        <td class="amt pos">+${fmt(totE)}</td>
+        <td class="amt neg">−${fmt(totS)}</td>
+        <td class="amt ${totE-totS>=0?'pos':'neg'}">${totE-totS>=0?'+':''}${fmt(totE-totS)}</td>
+        <td colspan="2"></td>
+      </tr>`;
+  }
 }
 window.renderMvts=renderMvts;
 // Rubriques comptables — stockées en LocalStorage, modifiables
@@ -2409,10 +2439,10 @@ function renderRapport(){
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
       <div class="card"><div class="card-title" style="margin-bottom:12px">Recettes par canal</div>
-        ${Object.entries(byCanal).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{const pct=totR>0?Math.round(v/totR*100):0;return`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>${mmBadge(k)}</span><span class="amt pos">${fmt(v)}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--green)"></div></div><div style="font-size:.68rem;color:var(--text3)">${pct}%</div></div>`}).join('')||'<div style="color:var(--text3)">Aucune donnée</div>'}
+        ${Object.entries(byCanal).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{const pct=totR>0?Math.round(v/totR*100):0;return`<div style="margin-bottom:10px;cursor:pointer;padding:6px 8px;border-radius:6px;transition:background .15s" onclick="ouvrirDetailCanalRapport('${k}','${debut}','${fin}')" title="Voir recettes ${k}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span>${mmBadge(k)}</span><span class="amt pos">${fmt(v)}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--green)"></div></div><div style="font-size:.68rem;color:var(--text3)">${pct}% — cliquer pour le détail</div></div>`}).join('')||'<div style="color:var(--text3)">Aucune donnée</div>'}
       </div>
       <div class="card"><div class="card-title" style="margin-bottom:12px">Versements par compte</div>
-        ${Object.entries(byCpt).sort((a,b)=>b[1]-a[1]).map(([id,v])=>{const cpt=comptes.find(c=>c.id===id);const pct=totC>0?Math.round(v/totC*100):0;return`<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:.78rem;color:var(--text2)">${cpt?cpt.nom:id}</span><span class="amt pos">${fmt(v)}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--blue)"></div></div><div style="font-size:.68rem;color:var(--text3)">${pct}%</div></div>`}).join('')||'<div style="color:var(--text3)">Aucun versement confirmé</div>'}
+        ${Object.entries(byCpt).sort((a,b)=>b[1]-a[1]).map(([id,v])=>{const cpt=comptes.find(c=>c.id===id);const pct=totC>0?Math.round(v/totC*100):0;return`<div style="margin-bottom:10px;cursor:pointer;padding:6px 8px;border-radius:6px;transition:background .15s" onclick="ouvrirDetailRapportCompte('${id}','${debut}','${fin}')" title="Voir versements ${cpt?cpt.nom:id}" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:.78rem;color:var(--text2)">${cpt?cpt.nom:id}</span><span class="amt pos">${fmt(v)}</span></div><div class="prog-bar"><div class="prog-fill" style="width:${pct}%;background:var(--blue)"></div></div><div style="font-size:.68rem;color:var(--text3)">${pct}% — cliquer pour le détail</div></div>`}).join('')||'<div style="color:var(--text3)">Aucun versement confirmé</div>'}
       </div>
     </div>
     <div class="card" style="margin-top:14px"><div class="card-title" style="margin-bottom:4px">Performance par point de vente</div>
@@ -2731,7 +2761,37 @@ async function importerCaissieresDepsExistantes(){
 window.importerCaissieresDepsExistantes=importerCaissieresDepsExistantes;
 
 // ── Détail opérations depuis Rapport (modal) ──────────
-function ouvrirDetailRapportPDV(pdvId, debut, fin) {
+function ouvrirDetailCanalRapport(canal, debut, fin) {
+  debut = today().slice(0,7) + '-01';
+  fin = today();
+  const recF = recettes.filter(r => r.canal === canal && r.date >= debut && r.date <= fin);
+  const totR = recF.reduce((s,r) => s+(r.montant||0), 0);
+  const recHtml = recF.length
+    ? recF.sort((a,b)=>b.date.localeCompare(a.date)).map((r,i) => `
+      <tr>
+        <td style="color:var(--text3);font-size:.68rem;text-align:right">${i+1}</td>
+        <td>${fmtD(r.date)}</td>
+        <td>${pdvBadge(r.pdv)}</td>
+        <td><span class="badge bb" style="font-size:.65rem">${r.type||'—'}</span></td>
+        <td class="amt pos">${fmt(r.montant)}</td>
+        <td style="font-size:.72rem;color:var(--text3)">${r.ref||'—'}</td>
+        <td style="font-size:.72rem;color:var(--text3)">${r.saisie||'—'}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:14px">Aucune recette</td></tr>';
+
+  const html = `
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <div class="stat-card green" style="flex:1"><div class="stat-lbl">Total ${canal}</div><div class="stat-val green">${fmt(totR)}</div><div class="stat-sub">${recF.length} recette(s) · ${DEVISE}</div></div>
+    </div>
+    <div class="tbl-wrap">
+      <table><thead><tr><th>#</th><th>Date</th><th>PDV</th><th>Type</th><th>Montant</th><th>Réf.</th><th>Saisi par</th></tr></thead>
+      <tbody>${recHtml}</tbody>
+      <tr style="background:var(--surface2);font-weight:700"><td colspan="4" style="text-align:right;padding:6px">TOTAL</td><td class="amt pos">${fmt(totR)}</td><td colspan="2"></td></tr>
+      </table>
+    </div>`;
+  afficherModalDetail(`🧾 Recettes ${mmBadge(canal)} — ${fmtD(debut)} au ${fmtD(fin)}`, html);
+}
+window.ouvrirDetailCanalRapport = ouvrirDetailCanalRapport;
   // Toujours afficher depuis le 1er du mois en cours jusqu'à aujourd'hui
   const debutMoisCourant = today().slice(0,7) + '-01';
   const finAujourdhui = today();
