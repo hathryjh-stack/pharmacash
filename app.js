@@ -2099,8 +2099,30 @@ function renderCaisseP(){
   const tbody=document.getElementById('cpTbody');
   if(!tbody)return;
   const mois=today().slice(0,7);
-  const data=mvts.filter(m=>m.compte===cp?.id).sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
-  const dataMois=data.filter(m=>m.date?.slice(0,7)===mois);
+  const allData=mvts.filter(m=>m.compte===cp?.id).sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
+
+  // Peupler le select rubriques dynamiquement
+  const rubSel=document.getElementById('fCPRubrique');
+  if(rubSel){
+    const rubriques=[...new Set(allData.map(m=>m.rubrique).filter(Boolean))].sort();
+    const valActuelle=rubSel.value;
+    rubSel.innerHTML='<option value="">Toutes rubriques</option>'+rubriques.map(r=>`<option value="${r}">${r}</option>`).join('');
+    if(valActuelle)rubSel.value=valActuelle;
+  }
+
+  // Appliquer les filtres
+  const dF=document.getElementById('fCPDate')?.value;
+  const tF=document.getElementById('fCPType')?.value;
+  const rF=document.getElementById('fCPRubrique')?.value;
+  const sF=document.getElementById('fCPSearch')?.value?.toLowerCase();
+  let data=allData;
+  if(dF)data=data.filter(m=>m.date===dF);
+  if(tF)data=data.filter(m=>m.type===tF);
+  if(rF)data=data.filter(m=>m.rubrique===rF);
+  if(sF)data=data.filter(m=>(m.libelle||'').toLowerCase().includes(sF)||(m.beneficiaire||'').toLowerCase().includes(sF));
+
+  // Résumé mois courant
+  const dataMois=allData.filter(m=>m.date?.slice(0,7)===mois);
   const entrees=dataMois.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0);
   const sorties=dataMois.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0);
   renderSoldeHeader('cpResumeHeader',{
@@ -2108,7 +2130,22 @@ function renderCaisseP(){
     entrées:entrees, sorties:sorties,
     label:'Caisse Principale', couleur:'var(--green)'
   });
-  if(!data.length){tbody.innerHTML='<tr><td colspan="10"><div class="empty-state"><div class="ei">🏛️</div>Aucun mouvement caisse principale</div></td></tr>';return;}
+
+  // Sous-total filtré
+  const totalFiltre=data.reduce((s,m)=>s+(m.type==='entrée'?m.montant:-(m.montant||0)),0);
+  const nbFiltre=data.length;
+  if(!data.length){
+    tbody.innerHTML=`<tr><td colspan="11"><div class="empty-state"><div class="ei">🏛️</div>${allData.length?'Aucun résultat pour ces filtres':'Aucun mouvement caisse principale'}</div></td></tr>`;
+    return;
+  }
+  // Ligne de sous-total si filtres actifs
+  const hasFilter=dF||tF||rF||sF;
+  const sousTotalHtml=hasFilter?`
+    <tr style="background:var(--surface2);font-weight:700;font-size:.78rem">
+      <td colspan="7" style="text-align:right;padding:6px 10px;color:var(--text2)">${nbFiltre} opération(s) filtrée(s)</td>
+      <td class="amt ${totalFiltre>=0?'pos':'neg'}" style="padding:6px 8px">${totalFiltre>=0?'+':''}${fmt(Math.abs(totalFiltre))}</td>
+      <td colspan="3"></td>
+    </tr>`:'';
   tbody.innerHTML=data.map((m,i)=>`<tr>
     ${rowNum(i)}
     <td>${fmtD(m.date)}</td>
@@ -2121,7 +2158,7 @@ function renderCaisseP(){
     <td class="amt">${fmt(m.soldeApres||0)}</td>
     <td style="font-size:.75rem;color:var(--text2)">${m.saisie||'—'}</td>
     <td><button class="btn btn-red btn-xs" onclick="delCPMvt('${m.id}')">✕</button></td>
-  </tr>`).join('');
+  </tr>`).join('') + sousTotalHtml;
 }
 window.renderCaisseP=renderCaisseP;
 

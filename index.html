@@ -253,6 +253,20 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           </div>
         </div>
         <div id="cpResumeHeader"></div>
+        <!-- Filtres Caisse Principale -->
+        <div class="filters" style="margin-bottom:12px">
+          <input type="date" id="fCPDate" class="fi" onchange="renderCaisseP()" placeholder="Date">
+          <select id="fCPType" class="fi" onchange="renderCaisseP()">
+            <option value="">Tous types</option>
+            <option value="entrée">↑ Entrées</option>
+            <option value="sortie">↓ Sorties</option>
+          </select>
+          <select id="fCPRubrique" class="fi" onchange="renderCaisseP()">
+            <option value="">Toutes rubriques</option>
+          </select>
+          <input type="text" id="fCPSearch" class="fi" oninput="renderCaisseP()" placeholder="🔍 Rechercher libellé…" style="min-width:180px">
+          <button class="btn btn-ghost btn-xs" onclick="document.getElementById('fCPDate').value='';document.getElementById('fCPType').value='';document.getElementById('fCPRubrique').value='';document.getElementById('fCPSearch').value='';renderCaisseP()">✕</button>
+        </div>
         <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>Type</th><th>Rubrique</th><th>Libellé</th><th>Bénéficiaire</th><th>Référence</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="cpTbody"></tbody></table></div></div>
       </div>
 
