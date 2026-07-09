@@ -2803,7 +2803,8 @@ function ouvrirDetailCanalRapport(canal, debut, fin) {
   afficherModalDetail(`🧾 Recettes ${mmBadge(canal)} — ${fmtD(debut)} au ${fmtD(fin)}`, html);
 }
 window.ouvrirDetailCanalRapport = ouvrirDetailCanalRapport;
-  // Toujours afficher depuis le 1er du mois en cours jusqu'à aujourd'hui
+
+function ouvrirDetailRapportPDV(pdvId, debut, fin) {
   const debutMoisCourant = today().slice(0,7) + '-01';
   const finAujourdhui = today();
   debut = debutMoisCourant;
