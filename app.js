@@ -267,12 +267,153 @@ const mmBadge=v=>`<span style="font-weight:600">${MM_LABEL[v]||v}</span>`;
 const statutBadge=s=>{const m={'confirmé':'bg','reçu':'bc','en attente':'ba'};return`<span class="badge ${m[s]||'ba'}">${s}</span>`;};
 const pdvBadge=id=>{const p=pdvs.find(x=>x.id===id);return p?`<span class="${p.type==='principale'?'tag-principale':'tag-depot'}">${p.nom}</span>`:id;};
 
+// ══════════════════════════════════════════════════════════════
+// MODULE SOLDE — SOURCE UNIQUE DE VÉRITÉ (v4.4)
+// ──────────────────────────────────────────────────────────────
+// Toutes les fonctions qui calculent un solde DOIVENT passer par ici.
+// Principe : solde = soldeInit + Σ(mouvements chronologiques)
+// Ne jamais faire confiance au champ c.solde stocké — le recalculer.
+// ══════════════════════════════════════════════════════════════
+const SoldeModule = (function() {
+
+  // Récupère tous les mouvements affectant un compte, tous types confondus,
+  // normalisés sous forme { date, sens: +1/-1, montant }
+  function mouvementsCompte(compteId, dateMax = null) {
+    const result = [];
+
+    // 1. Mouvements standards (mvts) — entrée/sortie
+    for (const m of mvts) {
+      if (m.compte !== compteId) continue;
+      if (dateMax && m.date > dateMax) continue;
+      result.push({
+        date: m.date,
+        ts: m.ts || 0,
+        sens: m.type === 'entrée' ? 1 : -1,
+        montant: m.montant || 0,
+        src: 'mvt'
+      });
+    }
+
+    // 2. Transferts MM → Banque (sortie du src, entrée du dst)
+    for (const t of transferts) {
+      if (dateMax && t.date > dateMax) continue;
+      if (t.compteSrc === compteId) {
+        result.push({ date: t.date, ts: t.ts || 0, sens: -1, montant: t.montant || 0, src: 'transfert-out' });
+      }
+      if (t.compteDst === compteId) {
+        result.push({ date: t.date, ts: t.ts || 0, sens: 1, montant: t.montant || 0, src: 'transfert-in' });
+      }
+    }
+
+    // 3. Petite Caisse (si le compte est la petite caisse)
+    const cpt = comptes.find(c => c.id === compteId);
+    if (cpt && cpt.nom && cpt.nom.toLowerCase().includes('petite')) {
+      for (const p of petiteCaisse) {
+        if (dateMax && p.date > dateMax) continue;
+        result.push({
+          date: p.date,
+          ts: p.ts || 0,
+          sens: p.type === 'appro' ? 1 : -1,
+          montant: p.montant || 0,
+          src: 'petiteCaisse'
+        });
+      }
+    }
+
+    // Tri chronologique stable
+    result.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.ts - b.ts));
+    return result;
+  }
+
+  // Solde d'un compte à une date donnée (ou solde actuel si dateMax null)
+  function soldeCompte(compteId, dateMax = null) {
+    const cpt = comptes.find(c => c.id === compteId);
+    if (!cpt) return 0;
+    const init = cpt.soldeInit ?? 0;
+    const mvtsC = mouvementsCompte(compteId, dateMax);
+    return mvtsC.reduce((s, m) => s + (m.sens * m.montant), init);
+  }
+
+  // Solde de chaque ligne (pour affichage "solde après" chronologique correct)
+  // Retourne une Map { mouvementId → soldeApres }
+  function soldesChronologiques(compteId) {
+    const cpt = comptes.find(c => c.id === compteId);
+    const init = cpt?.soldeInit ?? 0;
+
+    // On reconstruit avec les IDs pour pouvoir mapper
+    const items = [];
+    for (const m of mvts) {
+      if (m.compte === compteId) items.push({ id: m.id, date: m.date, ts: m.ts || 0, sens: m.type === 'entrée' ? 1 : -1, montant: m.montant || 0 });
+    }
+    const cptObj = comptes.find(c => c.id === compteId);
+    if (cptObj?.nom?.toLowerCase().includes('petite')) {
+      for (const p of petiteCaisse) {
+        items.push({ id: p.id, date: p.date, ts: p.ts || 0, sens: p.type === 'appro' ? 1 : -1, montant: p.montant || 0 });
+      }
+    }
+    items.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.ts - b.ts));
+
+    const map = {};
+    let running = init;
+    for (const it of items) {
+      running += it.sens * it.montant;
+      map[it.id] = running;
+    }
+    return map;
+  }
+
+  // Entrées / sorties d'un compte sur une période
+  function fluxPeriode(compteId, debut, fin) {
+    const cpt = comptes.find(c => c.id === compteId);
+    let entrees = 0, sorties = 0;
+    const mvtsC = mouvementsCompte(compteId, fin);
+    for (const m of mvtsC) {
+      if (debut && m.date < debut) continue;
+      if (m.sens > 0) entrees += m.montant;
+      else sorties += m.montant;
+    }
+    return { entrees, sorties };
+  }
+
+  // Synchronise le champ c.solde stocké avec le vrai solde calculé
+  // À appeler après toute opération, pour que le dashboard reste juste
+  async function synchroniserSolde(compteId) {
+    const cpt = comptes.find(c => c.id === compteId);
+    if (!cpt) return;
+    const vrai = soldeCompte(compteId);
+    if (cpt.solde !== vrai) {
+      cpt.solde = vrai;
+      if (typeof saveItem === 'function') await saveItem('comptes', cpt);
+    }
+    return vrai;
+  }
+
+  // Synchronise TOUS les comptes (utile après import ou reset)
+  async function synchroniserTous() {
+    for (const c of comptes) {
+      await synchroniserSolde(c.id);
+    }
+    if (typeof saveLocal === 'function') saveLocal();
+  }
+
+  return {
+    soldeCompte,
+    soldesChronologiques,
+    fluxPeriode,
+    synchroniserSolde,
+    synchroniserTous,
+    mouvementsCompte
+  };
+})();
+window.SoldeModule = SoldeModule;
+
 // ── DISPONIBILITÉ v4 ───────────────────────────────────
 // Banque = disponible, MM = en transit, Caisse = disponible
 function isBanque(c){ return c.cat==='banque'||c.cat==='caisse'; }
 function isMM(c){ return c.cat==='mobile_money'; }
-function totalDispo(){ return comptes.filter(c=>isBanque(c)&&c.actif!==false).reduce((s,c)=>s+(c.solde||0),0); }
-function totalTransit(){ return comptes.filter(c=>isMM(c)&&c.actif!==false).reduce((s,c)=>s+(c.solde||0),0); }
+// Utilisent le module SOLDE — recalculent le vrai solde plutôt que de faire confiance à c.solde
+function totalDispo(){ return comptes.filter(c=>isBanque(c)&&c.actif!==false).reduce((s,c)=>s+SoldeModule.soldeCompte(c.id),0); }
+function totalTransit(){ return comptes.filter(c=>isMM(c)&&c.actif!==false).reduce((s,c)=>s+SoldeModule.soldeCompte(c.id),0); }
 function dispoBadge(c){
   if(isBanque(c))return`<span class="badge bg">✓ Disponible</span>`;
   return`<span class="badge ba">⏳ En transit</span>`;
@@ -1756,10 +1897,12 @@ function renderBanques(){
   document.getElementById('bqComptes').innerHTML=comptes.filter(c=>c.actif!==false).map(c=>{
     const col=c.color||'var(--green)',op=c.op==='AUTRE'&&c.opLibre?c.opLibre:c.op;
     const banqueRatt=c.tetePont&&c.banqueRattachee?comptes.find(b=>b.id===c.banqueRattachee):null;
+    // Solde via module SOLDE — source unique de vérité
+    const soldeReel=SoldeModule.soldeCompte(c.id);
     return`<div class="compte-card" style="border-left:3px solid ${col};cursor:pointer" onclick="ouvrirMouvementsCompte('${c.id}')" title="Voir les mouvements">
       <div class="cc-icon">${OP_ICONS[c.op]||'💳'}</div>
       <div class="cc-name">${c.nom}${c.tetePont?` <span style="font-size:.6rem;background:var(--cyan-dim);color:var(--cyan);padding:1px 5px;border-radius:4px">TÊTE DE PONT</span>`:''}</div>
-      <div class="cc-solde" style="color:${(c.solde||0)>=0?col:'var(--red)'};">${fmt(c.solde)}</div>
+      <div class="cc-solde" style="color:${soldeReel>=0?col:'var(--red)'};">${fmt(soldeReel)}</div>
       <div style="margin-top:4px">${dispoBadge(c)}</div>
       <div class="cc-type">${c.cat==='mobile_money'?'Mobile Money':c.cat==='banque'?'Banque':'Caisse'} · ${op}</div>
       ${c.num?`<div style="font-size:.68rem;color:var(--text3);margin-top:2px;font-family:monospace">${c.num}</div>`:''}
@@ -2183,7 +2326,9 @@ function getCaisseP(){
 }
 function renderCaisseP(){
   const cp=getCaisseP();
-  const solde=cp?.solde||0;
+  // Solde via module SOLDE — source unique de vérité
+  const solde=cp?SoldeModule.soldeCompte(cp.id):0;
+  const soldesChrono=cp?SoldeModule.soldesChronologiques(cp.id):{};
   const cpSolde=document.getElementById('cpSolde');
   if(cpSolde){cpSolde.textContent=fmt(solde)+' '+DEVISE;cpSolde.style.color=solde>=0?'var(--green)':'var(--red)';}
   const tbody=document.getElementById('cpTbody');
@@ -2238,16 +2383,8 @@ function renderCaisseP(){
       <td class="amt ${totalFiltre>=0?'pos':'neg'}" style="padding:6px 8px">${totalFiltre>=0?'+':''}${fmt(Math.abs(totalFiltre))}</td>
       <td colspan="3"></td>
     </tr>`:'';
-  // Recalcul des soldes cumulatifs dans l'ordre chronologique
-  // On part du soldeInit et on applique les mvts du plus ancien au plus récent
-  const dataChronologique = [...allData].sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
-  let soldeCourant = cp?.soldeInit || 0;
-  const soldesRecalcules = {};
-  for (const m of dataChronologique) {
-    if(m.type==='entrée') soldeCourant += (m.montant||0);
-    else if(m.type==='sortie') soldeCourant -= (m.montant||0);
-    soldesRecalcules[m.id] = soldeCourant;
-  }
+  // Soldes chronologiques via le module SOLDE (source unique)
+  const soldesRecalcules = soldesChrono;
 
   tbody.innerHTML=data.map((m,i)=>`<tr>
     ${rowNum(i)}
@@ -3406,9 +3543,9 @@ window.onRTypeChange=onRTypeChange;
 // ══════════════════════════════════════════════════════
 function renderPetiteCaisse(){
   const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
-  const soldeInit=cptPC?.soldeInit||0;
-  const mvtsPC=petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
-  const solde=soldeInit+mvtsPC;
+  // Utilise le module SOLDE — source unique de vérité
+  const solde=cptPC?SoldeModule.soldeCompte(cptPC.id):0;
+  const soldesChrono=cptPC?SoldeModule.soldesChronologiques(cptPC.id):{};
   const tbody=document.getElementById('pcTbody');
   el('pcSolde',fmt(solde)+' '+DEVISE);
   const soldeEl=document.getElementById('pcSoldeEl');
@@ -3455,14 +3592,8 @@ function renderPetiteCaisse(){
     return;
   }
 
-  // Recalcul soldes chronologiques depuis soldeInit
-  const allChronologique=[...petiteCaisse].sort((a,b)=>a.date?.localeCompare(b.date||'')||0);
-  let running=soldeInit;
-  const soldesPC={};
-  for(const m of allChronologique){
-    running+=m.type==='appro'?m.montant:-(m.montant||0);
-    soldesPC[m.id]=running;
-  }
+  // Soldes chronologiques via le module SOLDE (source unique)
+  const soldesPC=soldesChrono;
 
   // Sous-total filtré
   const hasFilter=dF||tF||cF||sF;
