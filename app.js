@@ -1,19 +1,53 @@
-// ═══════════════════════════════════════════════════════
-// PHARMACASH PRO v4.1 — app.js
-// Pharmacie Saint Raphaël de M'Bengué
+// ═══════════════════════════════════════════════════════════════════════
+// PHARMACASH PRO v4.4 — app.js
+// Pharmacie Saint Raphaël de M'Bengué (PSRM)
 // Firebase Firestore + LocalStorage fallback
-// Corrections v4.1 :
-//   1. Total versement temps réel (oninput+onchange)
-//   2. Parseur SMS montant : 178.300 → 178300
-//   3. Parseur SMS PDV : détection phonétique+accents
-//   4. Anti-doublons recettes/versements
-//   5. Bouton Refresh sur chaque page
-//   6. Rapports & Relevés refonte complète (3 types)
-//   7. Type recette "À crédit" (Principale uniquement)
-//   8. Module Petite caisse
-//   9. Suivi cash par caissière + rapports
-// ═══════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════
+//
+// ┌─────────────────────────────────────────────────────────────────────┐
+// │  TABLE DES MATIÈRES — cherche [SECTION:xxx] pour sauter à une partie │
+// ├─────────────────────────────────────────────────────────────────────┤
+// │  [SECTION:IMPORTS]      Imports Firebase & configuration             │
+// │  [SECTION:DONNEES]      Variables globales & collections             │
+// │  [SECTION:FIREBASE]     Helpers Firebase (load, save, sub)           │
+// │  [SECTION:BACKUP]       Sauvegarde PC / Dropbox / Import JSON        │
+// │  [SECTION:UTILS]        Fonctions utilitaires (fmt, dates, uid…)     │
+// │  [SECTION:SOLDE]        ⭐ MODULE SOLDE — source unique de vérité     │
+// │  [SECTION:DISPO]        Disponibilité (banque/MM/caisse)             │
+// │  [SECTION:AUTH]         Authentification & login                     │
+// │  [SECTION:NAV]          Navigation entre pages                       │
+// │  [SECTION:SELECTS]      Peuplement des menus déroulants              │
+// │  [SECTION:DASHBOARD]    Tableau de bord                              │
+// │  [SECTION:RECETTES]     Recettes journalières + parseur SMS          │
+// │  [SECTION:VERSEMENTS]   Versements PDV (multi-modes + frais)         │
+// │  [SECTION:BANQUES]      Banques & MM + transferts MM→Banque          │
+// │  [SECTION:CAISSE_P]     Caisse Principale                            │
+// │  [SECTION:RAPPORT]      Rapport de trésorerie (3 vues)               │
+// │  [SECTION:DETAIL]       Modaux de détail (clic sur rapport)          │
+// │  [SECTION:VACATIONS]    Plages horaires configurables                │
+// │  [SECTION:CAISSIERES]   Base de données caissières                   │
+// │  [SECTION:SOLDE_HEADER] Barre solde universelle (ouverture/flux)     │
+// │  [SECTION:RELEVES]      Relevés périodiques (PDF/Excel/Word)         │
+// │  [SECTION:ADMIN]        Configuration (PDV, comptes, MM)             │
+// │  [SECTION:USERS]        Gestion des utilisateurs                     │
+// │  [SECTION:PETITE_C]     Petite caisse                                │
+// │  [SECTION:SUIVI_C]      Suivi caissières                             │
+// │  [SECTION:CLOTURE]      Clôture de caisse                            │
+// │  [SECTION:RAN]          Reports à Nouveaux                           │
+// │  [SECTION:IMPORT_XLS]   Import Excel de démarrage                    │
+// │  [SECTION:PRINT_DASH]   Impression tableau de bord                   │
+// │  [SECTION:CORRECTIONS]  Corrections massives (imputations)          │
+// │  [SECTION:INIT]         Initialisation de l'application              │
+// └─────────────────────────────────────────────────────────────────────┘
+//
+// ⚠️  RÈGLES DE MAINTENANCE :
+//  • Tout calcul de solde DOIT passer par SoldeModule (jamais c.solde direct)
+//  • Avant tout upload GitHub : lancer  node valider.js
+//  • Tests logique solde :                node test_solde.js
+//  • Gros fichiers → GitHub "Upload files", jamais l'éditeur inline
+// ═══════════════════════════════════════════════════════════════════════
 
+// [SECTION:IMPORTS] ══════════════════════════════════════════════════════
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, doc, getDocs,
          setDoc, deleteDoc, onSnapshot, serverTimestamp }
@@ -76,7 +110,7 @@ const DEF_COMPTES = [
     num:'', contact:'', soldeInit:0, solde:0, color:'#00d68f', notes:'', actif:true }
 ];
 
-// ── STATE ──────────────────────────────────────────────
+// [SECTION:DONNEES] STATE — Variables globales & collections ─────────────
 let users      = LS.g('users')      || DEF_USERS;
 let pdvs       = LS.g('pdvs')       || DEF_PDV;
 let comptes    = LS.g('comptes')    || DEF_COMPTES;
@@ -93,7 +127,7 @@ let currentUser = null;
 let backupTimer = null;
 
 // ══════════════════════════════════════════════════════
-// FIREBASE HELPERS
+// [SECTION:FIREBASE] FIREBASE HELPERS
 // ══════════════════════════════════════════════════════
 async function fbLoad(col){
   if(!useFirebase) return null;
@@ -154,7 +188,7 @@ async function saveItem(col,item){ saveLocal(); if(useFirebase){sync('syncing','
 async function delItem(col,id){ saveLocal(); if(useFirebase){await fbDel(col,id);} }
 
 // ══════════════════════════════════════════════════════
-// BACKUP
+// [SECTION:BACKUP] BACKUP
 // ══════════════════════════════════════════════════════
 function buildBlob(){
   const data={users,pdvs,comptes,recettes,versements,mvts,clotures,transferts,
@@ -228,7 +262,7 @@ function importerDonnees(e){
 }
 
 // ══════════════════════════════════════════════════════
-// UTILS
+// [SECTION:UTILS] UTILS
 // ══════════════════════════════════════════════════════
 const fmt=n=>new Intl.NumberFormat('fr-FR').format(Math.round(n||0));
 const rowNum=i=>`<td style="color:var(--text3);font-size:.68rem;font-weight:600;min-width:24px;text-align:right;padding-right:8px;user-select:none">${i+1}</td>`;
@@ -268,7 +302,7 @@ const statutBadge=s=>{const m={'confirmé':'bg','reçu':'bc','en attente':'ba'};
 const pdvBadge=id=>{const p=pdvs.find(x=>x.id===id);return p?`<span class="${p.type==='principale'?'tag-principale':'tag-depot'}">${p.nom}</span>`:id;};
 
 // ══════════════════════════════════════════════════════════════
-// MODULE SOLDE — SOURCE UNIQUE DE VÉRITÉ (v4.4)
+// [SECTION:SOLDE] MODULE SOLDE — SOURCE UNIQUE DE VÉRITÉ (v4.4)
 // ──────────────────────────────────────────────────────────────
 // Toutes les fonctions qui calculent un solde DOIVENT passer par ici.
 // Principe : solde = soldeInit + Σ(mouvements chronologiques)
@@ -420,7 +454,7 @@ function dispoBadge(c){
 }
 
 // ══════════════════════════════════════════════════════
-// AUTH
+// [SECTION:AUTH] AUTH
 // ══════════════════════════════════════════════════════
 async function doLogin(){
   const login=document.getElementById('loginUser').value.trim();
@@ -458,7 +492,7 @@ function startApp(){
 }
 
 // ══════════════════════════════════════════════════════
-// NAVIGATION
+// [SECTION:NAV] NAVIGATION
 // ══════════════════════════════════════════════════════
 const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','caisseprinc','petitecaisse','caissiere','ran','admin','utilisateurs'];
 function goTo(name){
@@ -485,7 +519,7 @@ function goTo(name){
 window.goTo=goTo;
 
 // ══════════════════════════════════════════════════════
-// SELECTS
+// [SECTION:SELECTS] SELECTS
 // ══════════════════════════════════════════════════════
 function populateSelects(){
   const pdvO=pdvs.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
@@ -543,7 +577,7 @@ function initDateFields() {
 window.initDateFields = initDateFields;
 
 // ══════════════════════════════════════════════════════
-// DASHBOARD
+// [SECTION:DASHBOARD] DASHBOARD
 // ══════════════════════════════════════════════════════
 function renderDashboard(){
   const t=today();
@@ -863,7 +897,7 @@ function exportSuiviCaissiere(format){
 window.exportSuiviCaissiere=exportSuiviCaissiere;
 
 // ══════════════════════════════════════════════════════
-// RECETTES
+// [SECTION:RECETTES] RECETTES
 // ══════════════════════════════════════════════════════
 // ── Gestion des vues Recettes ─────────────────────────
 let _recettesVue = 'globale';
@@ -1100,7 +1134,7 @@ async function saveSMSRecette(){
 window.saveSMSRecette=saveSMSRecette;
 
 // ══════════════════════════════════════════════════════
-// VERSEMENTS — multiples par dépôt (v4)
+// [SECTION:VERSEMENTS] VERSEMENTS — multiples par dépôt (v4)
 // ══════════════════════════════════════════════════════
 function renderVersements(){
   let data=[...versements].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
@@ -1893,7 +1927,7 @@ function renderCaisse(){
 window.renderCaisse=renderCaisse;
 
 // ══════════════════════════════════════════════════════
-// BANQUES & MM + TRANSFERT MM→BANQUE (v4)
+// [SECTION:BANQUES] BANQUES & MM + TRANSFERT MM→BANQUE (v4)
 // ══════════════════════════════════════════════════════
 function renderBanques(){
   document.getElementById('bqComptes').innerHTML=comptes.filter(c=>c.actif!==false).map(c=>{
@@ -2678,7 +2712,7 @@ function renderRapport(){
     </div>`;
 }
 // ══════════════════════════════════════════════════════
-// BARRE SOLDE UNIVERSEL — Ouverture / Entrées / Sorties / Solde actuel
+// [SECTION:SOLDE_HEADER] BARRE SOLDE UNIVERSEL — Ouverture / Entrées / Sorties / Solde actuel
 // ══════════════════════════════════════════════════════
 function renderSoldeHeader(containerId, opts = {}) {
   const el = document.getElementById(containerId);
@@ -3167,11 +3201,11 @@ function imprimerDetailRapport() {
   w.document.close();
 }
 window.imprimerDetailRapport = imprimerDetailRapport;
-// RELEVÉS PÉRIODIQUES — Print/PDF/Excel/Word (v4)
+// [SECTION:RELEVES] RELEVÉS PÉRIODIQUES — Print/PDF/Excel/Word (v4)
 // ══════════════════════════════════════════════════════
 
 // ══════════════════════════════════════════════════════
-// ADMIN — CONFIG
+// [SECTION:ADMIN] ADMIN — CONFIG
 // ══════════════════════════════════════════════════════
 function adminTab(name){
   const tabs=['pdv','banques','mm-tetes','mm-pdv','caissieresdb','vacations'];
@@ -3326,7 +3360,7 @@ function imprimerConfig(section){
 }
 window.imprimerConfig=imprimerConfig;
 
-// PDV CRUD
+// [SECTION:ADMIN_PDV] PDV CRUD
 function onPDVFreqChange(){
   const v=document.getElementById('mPDVFreq').value;
   const showJours=['hebdomadaire','bimensuel','bihebdomadaire'].includes(v);
@@ -3401,7 +3435,7 @@ async function delPDV(id){
 }
 window.delPDV=delPDV;
 
-// COMPTES CRUD — avec actif/inactif (v4)
+// [SECTION:ADMIN_CPT] COMPTES CRUD — avec actif/inactif (v4)
 function onTetePontChange(){
   const checked=document.getElementById('mCptTetePont').checked;
   document.getElementById('mCptBanqueRow').style.display=checked?'block':'none';
@@ -3483,7 +3517,7 @@ async function delCompte(id){
 }
 window.delCompte=delCompte;
 
-// UTILISATEURS
+// [SECTION:USERS] UTILISATEURS
 function renderUsers(){
   document.getElementById('userTbody').innerHTML=users.map(u=>`<tr>
     <td><b>${u.nom}</b></td><td style="color:var(--text2);font-size:.8rem;font-family:monospace">${u.login}</td>
@@ -3543,7 +3577,7 @@ function onRTypeChange(){
 window.onRTypeChange=onRTypeChange;
 
 // ══════════════════════════════════════════════════════
-// PETITE CAISSE (v4.1)
+// [SECTION:PETITE_C] PETITE CAISSE (v4.1)
 // ══════════════════════════════════════════════════════
 function renderPetiteCaisse(){
   const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
@@ -3777,7 +3811,7 @@ async function savePCMouvement(){
 window.savePCMouvement=savePCMouvement;
 
 // ══════════════════════════════════════════════════════
-// SUIVI CAISSIÈRES (v4.1)
+// [SECTION:SUIVI_C] SUIVI CAISSIÈRES (v4.1)
 // ══════════════════════════════════════════════════════
 function renderSuiviCaissiere(){
   const periode=document.getElementById('scPeriode')?.value||'mois';
@@ -4093,7 +4127,7 @@ function exporterReleveWord(){
 window.exporterReleveWord=exporterReleveWord;
 
 // ══════════════════════════════════════════════════════
-// IMPORT EXCEL — PharmaCash_Import_Demarrage.xlsx
+// [SECTION:IMPORT_XLS] IMPORT EXCEL — PharmaCash_Import_Demarrage.xlsx
 // ══════════════════════════════════════════════════════
 
 // Charge SheetJS dynamiquement
@@ -4303,7 +4337,7 @@ async function importerExcel(e){
 window.importerExcel=importerExcel;
 
 // ══════════════════════════════════════════════════════
-// IMPRESSION TABLEAU DE BORD
+// [SECTION:PRINT_DASH] IMPRESSION TABLEAU DE BORD
 // ══════════════════════════════════════════════════════
 function imprimerDashboard() {
   const t = today();
@@ -4938,7 +4972,7 @@ async function refreshPage(){
   toast('Données actualisées ✓');
 }
 // ══════════════════════════════════════════════════════
-// CORRECTION MASSIVE — Réimputation clôtures tête de pont
+// [SECTION:CORRECTIONS] CORRECTION MASSIVE — Réimputation clôtures tête de pont
 // Supprime tous les versements/mvts de clôture imputés sur
 // une tête de pont depuis le 01/07/2026, et recalcule les soldes
 // ══════════════════════════════════════════════════════
