@@ -1932,7 +1932,7 @@ function ouvrirTransfertRapide(compteMMId){
   document.getElementById('tDate').value=today();
   document.getElementById('tSrcCompte').value=compteMMId;
   document.getElementById('tDstCompte').value=cMM.banqueRattachee;
-  document.getElementById('tMontant').value=Math.max(0,cMM.solde||0);
+  document.getElementById('tMontant').value=Math.max(0,SoldeModule.soldeCompte(cMM.id));
   document.getElementById('tRef').value='';
   document.getElementById('tNotes').value=`Transfert tête de pont ${cMM.nom} → ${cBQ.nom}`;
   document.getElementById('tSaisie').value=currentUser.nom;
@@ -1963,7 +1963,7 @@ function renderMvts(){
   const mvtsMois=mvts.filter(m=>(cF?m.compte===cF:true)&&m.date?.slice(0,7)===mois);
   const entreesMois=mvtsMois.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0);
   const sortiesMois=mvtsMois.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0);
-  const soldeAct=cptSel?(cptSel.solde||0):(comptes.filter(c=>c.actif!==false).reduce((s,c)=>s+(c.solde||0),0));
+  const soldeAct=cptSel?SoldeModule.soldeCompte(cptSel.id):(comptes.filter(c=>c.actif!==false).reduce((s,c)=>s+SoldeModule.soldeCompte(c.id),0));
   renderSoldeHeader('mvtsResumeHeader',{
     soldeActuel:soldeAct, compteId:cptSel?.id||null,
     entrées:entreesMois, sorties:sortiesMois,
@@ -2136,14 +2136,16 @@ async function saveTransfert(){
   if(srcId===dstId){toast('Source et destination identiques','err');return;}
   const src=comptes.find(x=>x.id===srcId),dst=comptes.find(x=>x.id===dstId);
   if(!src||!dst){toast('Compte introuvable','err');return;}
-  if((src.solde||0)<montant){
-    toast(`❌ Solde insuffisant — ${src.nom} : ${fmt(src.solde||0)} ${DEVISE} disponible, ${fmt(montant)} ${DEVISE} demandé`,'err');
+  // Solde réel via module — pas le champ stocké
+  const soldeSrc=SoldeModule.soldeCompte(srcId);
+  if(soldeSrc<montant){
+    toast(`❌ Solde insuffisant — ${src.nom} : ${fmt(soldeSrc)} ${DEVISE} disponible, ${fmt(montant)} ${DEVISE} demandé`,'err');
     return;
   }
-  // Débite MM
-  src.solde=(src.solde||0)-montant;await saveItem('comptes',src);
+  // Débite MM (met à jour le cache c.solde)
+  src.solde=soldeSrc-montant;await saveItem('comptes',src);
   // Crédite Banque
-  dst.solde=(dst.solde||0)+montant;await saveItem('comptes',dst);
+  dst.solde=SoldeModule.soldeCompte(dstId)+montant;await saveItem('comptes',dst);
   // Enregistre le transfert
   const item={id:uid(),date,compteSrc:srcId,compteDst:dstId,compte:srcId,
     type:'sortie',montant,ref,notes,saisie,soldeApres:src.solde,ts:Date.now()};
@@ -3212,7 +3214,7 @@ function renderAdmin(){
     <td>${OP_ICONS[c.op]||'🏦'} ${op}</td>
     <td style="font-size:.75rem;color:var(--text2);font-family:monospace">${c.num||'—'}</td>
     <td style="font-size:.72rem;color:var(--text2)">${c.notes||'—'}</td>
-    <td class="amt ${(c.solde||0)>=0?'pos':'neg'}">${fmt(c.solde)}</td>
+    <td class="amt ${SoldeModule.soldeCompte(c.id)>=0?'pos':'neg'}">${fmt(SoldeModule.soldeCompte(c.id))}</td>
     <td><span class="badge ${c.actif!==false?'bg':'br'}">${c.actif!==false?'Actif':'Inactif'}</span></td>
     <td><button class="btn btn-ghost btn-xs" onclick="editCompte('${c.id}')">✏️</button>
     <button class="btn btn-red btn-xs" onclick="delCompte('${c.id}')">✕</button></td></tr>`;
@@ -3222,7 +3224,7 @@ function renderAdmin(){
     <td>💵 <b>${c.nom}</b></td><td>Caisse espèces</td>
     <td style="font-size:.75rem;color:var(--text2)">—</td>
     <td style="font-size:.72rem;color:var(--text2)">${c.notes||'—'}</td>
-    <td class="amt ${(c.solde||0)>=0?'pos':'neg'}">${fmt(c.solde)}</td>
+    <td class="amt ${SoldeModule.soldeCompte(c.id)>=0?'pos':'neg'}">${fmt(SoldeModule.soldeCompte(c.id))}</td>
     <td><span class="badge bg">Actif</span></td>
     <td><button class="btn btn-ghost btn-xs" onclick="editCompte('${c.id}')">✏️</button>
     <button class="btn btn-red btn-xs" onclick="delCompte('${c.id}')">✕</button></td></tr>`).join('');
@@ -3237,7 +3239,7 @@ function renderAdminMMTetes(){
       <td>${OP_ICONS[c.op]||'📱'} <b>${c.nom}</b></td>
       <td>${c.op}</td>
       <td style="font-size:.78rem;font-family:monospace">${c.num||'—'}</td>
-      <td class="amt ${(c.solde||0)>=0?'pos':'neg'}">${fmt(c.solde)}</td>
+      <td class="amt ${SoldeModule.soldeCompte(c.id)>=0?'pos':'neg'}">${fmt(SoldeModule.soldeCompte(c.id))}</td>
       <td><span class="badge ${c.tetePont?'bg':'ba'}">${c.tetePont?'✓ Tête de pont':'—'}</span></td>
       <td style="font-size:.78rem;color:var(--text2)">${banque?banque.nom:'—'}</td>
       <td><button class="btn btn-ghost btn-xs" onclick="editCompte('${c.id}')">✏️</button>
@@ -3298,12 +3300,12 @@ function imprimerConfig(section){
   } else if(section==='banques'){
     html=`<h2>Banques & Caisses</h2><table border="1" cellpadding="6" style="width:100%;border-collapse:collapse;font-size:10pt">
       <tr style="background:#f0f0f0"><th>Nom</th><th>Opérateur</th><th>N° Compte / RIB</th><th>Notes</th><th>Solde actuel</th></tr>
-      ${comptes.filter(c=>c.cat==='banque'||c.cat==='caisse').map(c=>`<tr><td>${c.nom}</td><td>${c.op}</td><td>${c.num||'—'}</td><td>${c.notes||'—'}</td><td>${fmt(c.solde)} FCFA</td></tr>`).join('')}
+      ${comptes.filter(c=>c.cat==='banque'||c.cat==='caisse').map(c=>`<tr><td>${c.nom}</td><td>${c.op}</td><td>${c.num||'—'}</td><td>${c.notes||'—'}</td><td>${fmt(SoldeModule.soldeCompte(c.id))} FCFA</td></tr>`).join('')}
     </table>`;
   } else if(section==='mm-tetes'){
     html=`<h2>Mobile Money — Têtes de Pont</h2><table border="1" cellpadding="6" style="width:100%;border-collapse:collapse;font-size:10pt">
       <tr style="background:#f0f0f0"><th>Nom</th><th>Opérateur</th><th>N° Wallet</th><th>Solde</th><th>Tête de pont</th><th>Banque rattachée</th></tr>
-      ${comptes.filter(c=>c.cat==='mobile_money').map(c=>{const b=c.banqueRattachee?comptes.find(x=>x.id===c.banqueRattachee):null;return`<tr><td>${c.nom}</td><td>${c.op}</td><td>${c.num||'—'}</td><td>${fmt(c.solde)} FCFA</td><td>${c.tetePont?'Oui':'Non'}</td><td>${b?b.nom:'—'}</td></tr>`;}).join('')}
+      ${comptes.filter(c=>c.cat==='mobile_money').map(c=>{const b=c.banqueRattachee?comptes.find(x=>x.id===c.banqueRattachee):null;return`<tr><td>${c.nom}</td><td>${c.op}</td><td>${c.num||'—'}</td><td>${fmt(SoldeModule.soldeCompte(c.id))} FCFA</td><td>${c.tetePont?'Oui':'Non'}</td><td>${b?b.nom:'—'}</td></tr>`;}).join('')}
     </table>`;
   } else if(section==='mm-pdv'){
     html=`<h2>Mobile Money — Numéros par PDV</h2><table border="1" cellpadding="6" style="width:100%;border-collapse:collapse;font-size:10pt">
@@ -3661,7 +3663,7 @@ function openPCModal(type){
     const comptesDisponibles=comptes.filter(c=>c.actif!==false&&c.cat!=='mobile_money');
     caisseId.innerHTML='<option value="">— Report / Solde antérieur (sans débit) —</option>'+
       comptesDisponibles
-      .map(c=>`<option value="${c.id}">${c.nom} — ${fmt(c.solde||0)} ${DEVISE}</option>`).join('');
+      .map(c=>`<option value="${c.id}">${c.nom} — ${fmt(SoldeModule.soldeCompte(c.id))} ${DEVISE}</option>`).join('');
   }
   openM('mPetiteCaisse');
 }
@@ -3721,11 +3723,12 @@ async function savePCMouvement(){
             _pcSaving=false;return;
           }
           // ── GARDE-FOU 2 : interdit de mettre le compte source en négatif ──
-          if((c.solde||0) < montant){
-            toast(`❌ Solde insuffisant sur "${c.nom}" — Disponible : ${fmt(c.solde||0)} ${DEVISE}, demandé : ${fmt(montant)} ${DEVISE}`,'err');
+          const soldeSource=SoldeModule.soldeCompte(c.id);
+          if(soldeSource < montant){
+            toast(`❌ Solde insuffisant sur "${c.nom}" — Disponible : ${fmt(soldeSource)} ${DEVISE}, demandé : ${fmt(montant)} ${DEVISE}`,'err');
             _pcSaving=false;return;
           }
-          c.solde=(c.solde||0)-montant;
+          c.solde=soldeSource-montant;
           await saveItem('comptes',c);
           const m={id:uid(),date,compte:c.id,type:'sortie',
             libelle:`Appro petite caisse${libelle?' — '+libelle:''}`,
@@ -3960,7 +3963,7 @@ function _buildRelEtablissement(debut,fin,cpt,mvtF,trfF,verRecus){
     ${_headerReleve('Relevé Établissement Financier',debut,fin,nom)}
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
       ${[['Entrées',totEntrees,'#00C47A'],['Sorties',totSorties,'#f05050'],
-         ['Versements PDV reçus',totVerRecus,'#4d8af0'],['Solde actuel',cpt?.solde||0,'#a855f7']]
+         ['Versements PDV reçus',totVerRecus,'#4d8af0'],['Solde actuel',cpt?SoldeModule.soldeCompte(cpt.id):0,'#a855f7']]
         .map(([l,v,c])=>`<div style="border:1px solid #eee;border-radius:8px;padding:10px;border-left:3px solid ${c}">
           <div style="font-size:.65rem;color:#999;text-transform:uppercase">${l}</div>
           <div style="font-size:1rem;font-weight:800;color:${c}">${fmt(v)} ${DEVISE}</div>
@@ -4322,7 +4325,7 @@ function imprimerDashboard() {
       <td>${c.nom}</td>
       <td>${c.cat === 'mobile_money' ? 'Mobile Money' : c.cat === 'banque' ? 'Banque' : 'Caisse'}</td>
       <td>${c.op === 'AUTRE' && c.opLibre ? c.opLibre : c.op}</td>
-      <td style="text-align:right;font-weight:700;color:${(c.solde||0) >= 0 ? '#00C47A' : '#f05050'}">${fmt(c.solde||0)} ${DEVISE}</td>
+      <td style="text-align:right;font-weight:700;color:${SoldeModule.soldeCompte(c.id) >= 0 ? '#00C47A' : '#f05050'}">${fmt(SoldeModule.soldeCompte(c.id))} ${DEVISE}</td>
       <td style="text-align:center">${c.cat === 'mobile_money' ? '⏳ En transit' : '✓ Disponible'}</td>
     </tr>`).join('');
 
@@ -4431,7 +4434,7 @@ function exportDashboard(format) {
     c.nom,
     c.cat==='mobile_money'?'Mobile Money':c.cat==='banque'?'Banque':'Caisse',
     c.op==='AUTRE'&&c.opLibre?c.opLibre:c.op,
-    c.solde||0,
+    SoldeModule.soldeCompte(c.id),
     c.cat==='mobile_money'?'En transit':'Disponible'
   ]);
   exportUniversel('Tableau de bord',
@@ -4634,7 +4637,7 @@ async function capturerRANMois(periode, mode = 'AUTOMATIQUE') {
       compteCat: c.cat,
       periode,
       soldeOuverture: Math.round(soldeRAN),
-      soldeActuel: c.solde || 0,
+      soldeActuel: SoldeModule.soldeCompte(c.id),
       devise: DEVISE,
       mode,
       verrouille: false,
@@ -4758,7 +4761,7 @@ function renderRAN() {
   const lignes = comptes.filter(c => c.actif !== false).map(c => {
     const ran = getRAN(c.id, periode);
     const soldeOuv = ran ? ran.soldeOuverture : null;
-    const soldeAct = c.solde || 0;
+    const soldeAct = SoldeModule.soldeCompte(c.id);
     const ecart = soldeOuv !== null ? soldeAct - soldeOuv : null;
     return { c, ran, soldeOuv, soldeAct, ecart };
   });
@@ -4870,7 +4873,7 @@ function exportRAN(format) {
   const periode = selEl ? selEl.value || today().slice(0, 7) : today().slice(0, 7);
   const lignes = comptes.filter(c => c.actif !== false).map(c => {
     const ran = getRAN(c.id, periode);
-    const soldeAct = c.solde || 0;
+    const soldeAct = SoldeModule.soldeCompte(c.id);
     const ecart = ran ? soldeAct - ran.soldeOuverture : null;
     return [
       c.nom,
