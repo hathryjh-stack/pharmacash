@@ -3627,6 +3627,15 @@ async function savePCMouvement(){
     }
   } finally {
     _pcSaving=false;
+    // Mettre à jour le solde Firebase du compte Petite Caisse
+    const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
+    if(cptPC){
+      const soldeInit=cptPC.soldeInit||0;
+      const nouveauSolde=soldeInit+petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
+      cptPC.solde=nouveauSolde;
+      await saveItem('comptes',cptPC);
+      saveLocal();
+    }
   }
 }
 window.savePCMouvement=savePCMouvement;
