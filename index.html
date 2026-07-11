@@ -317,7 +317,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           <input type="text" id="fPCSearch" class="fi" oninput="renderPetiteCaisse()" placeholder="🔍 Rechercher libellé…" style="min-width:180px">
           <button class="btn btn-ghost btn-xs" onclick="['fPCDateDebut','fPCDateFin','fPCType','fPCCateg','fPCSearch'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=''});renderPetiteCaisse()">✕</button>
         </div>
-        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date & Heure</th><th>Type</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Solde après</th><th>Référence</th><th>Saisi par</th></tr></thead><tbody id="pcTbody"></tbody></table></div></div>
+        <div class="card"><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date & Heure</th><th>Type</th><th>Libellé</th><th>Catégorie</th><th>Montant</th><th>Solde après</th><th>Référence</th><th>Saisi par</th><th></th></tr></thead><tbody id="pcTbody"></tbody></table></div></div>
       </div>
       <!-- SUIVI CAISSIÈRES -->
       <div class="pg" id="pg-caissiere">

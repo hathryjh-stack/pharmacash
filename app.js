@@ -309,6 +309,17 @@ const pdvBadge=id=>{const p=pdvs.find(x=>x.id===id);return p?`<span class="${p.t
 // Principe : solde = soldeInit + Σ(mouvements chronologiques)
 // Ne jamais faire confiance au champ c.solde stocké — le recalculer.
 // ══════════════════════════════════════════════════════════════
+// ── Identification du compte Petite Caisse — point d'entrée UNIQUE ──
+// Si un jour tu ajoutes un flag (ex. cat:'petite_caisse'), une seule ligne à changer ici.
+function estComptePC(cpt){
+  return !!(cpt && cpt.nom && cpt.nom.toLowerCase().includes('petite'));
+}
+function comptePC(){
+  return comptes.find(estComptePC) || null;
+}
+window.estComptePC=estComptePC;
+window.comptePC=comptePC;
+
 const SoldeModule = (function() {
 
   // Récupère tous les mouvements affectant un compte, tous types confondus,
@@ -342,7 +353,7 @@ const SoldeModule = (function() {
 
     // 3. Petite Caisse (si le compte est la petite caisse)
     const cpt = comptes.find(c => c.id === compteId);
-    if (cpt && cpt.nom && cpt.nom.toLowerCase().includes('petite')) {
+    if (estComptePC(cpt)) {
       for (const p of petiteCaisse) {
         if (dateMax && p.date > dateMax) continue;
         result.push({
@@ -381,7 +392,7 @@ const SoldeModule = (function() {
       if (m.compte === compteId) items.push({ id: m.id, date: m.date, ts: m.ts || 0, sens: m.type === 'entrée' ? 1 : -1, montant: m.montant || 0 });
     }
     const cptObj = comptes.find(c => c.id === compteId);
-    if (cptObj?.nom?.toLowerCase().includes('petite')) {
+    if (estComptePC(cptObj)) {
       for (const p of petiteCaisse) {
         items.push({ id: p.id, date: p.date, ts: p.ts || 0, sens: p.type === 'appro' ? 1 : -1, montant: p.montant || 0 });
       }
@@ -834,7 +845,7 @@ window.exportVersements=exportVersements;
 // ── EXPORT PETITE CAISSE ──────────────────────────────
 function exportPetiteCaisse(format){
   const data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
-  const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
+  const cptPC=comptePC();
   const soldeInit=cptPC?.soldeInit||0;
   const mvtsPC=petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
   const solde=soldeInit+mvtsPC;
@@ -1617,7 +1628,7 @@ function openCaisseModal(id){
   if(cptCash){
     cptCash.innerHTML=caisseOpts;
     const defCash=pdvP?.caisseDirecte
-      ||comptes.find(c=>c.cat==='caisse'&&!c.nom.toLowerCase().includes('petite')&&c.actif!==false)?.id;
+      ||comptes.find(c=>c.cat==='caisse'&&!estComptePC(c)&&c.actif!==false)?.id;
     if(defCash)cptCash.value=defCash;
   }
   // OM, MTN, Wave, Moov
@@ -1684,7 +1695,7 @@ async function saveCloture(){
           // Sélecteur manuel du modal → sinon compte caisse non-petite-caisse du PDV
           compteId = document.getElementById('mcCptCash')?.value
             || pdvP.caisseDirecte
-            || comptes.find(c=>c.cat==='caisse'&&!c.nom.toLowerCase().includes('petite')&&c.actif!==false)?.id
+            || comptes.find(c=>c.cat==='caisse'&&!estComptePC(c)&&c.actif!==false)?.id
             || comptes[0]?.id||'';
         } else {
           // Priorité 1 : sélecteur manuel dans le modal clôture
@@ -2361,7 +2372,7 @@ window.nombreEnLettres=nombreEnLettres;
 // CAISSE PRINCIPALE (v4.1)
 // ══════════════════════════════════════════════════════
 function getCaisseP(){
-  return comptes.find(c=>c.cat==='caisse'&&!c.nom.toLowerCase().includes('petite'));
+  return comptes.find(c=>c.cat==='caisse'&&!estComptePC(c));
 }
 function renderCaisseP(){
   const cp=getCaisseP();
@@ -3585,18 +3596,18 @@ window.onRTypeChange=onRTypeChange;
 // [SECTION:PETITE_C] PETITE CAISSE (v4.1)
 // ══════════════════════════════════════════════════════
 function renderPetiteCaisse(){
-  const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
-  // Utilise le module SOLDE — source unique de vérité
+  const cptPC=comptePC();
+  // Tout passe par le module SOLDE — source unique de vérité
   const solde=cptPC?SoldeModule.soldeCompte(cptPC.id):0;
   const soldesChrono=cptPC?SoldeModule.soldesChronologiques(cptPC.id):{};
   const tbody=document.getElementById('pcTbody');
   el('pcSolde',fmt(solde)+' '+DEVISE);
   const soldeEl=document.getElementById('pcSoldeEl');
   if(soldeEl)soldeEl.style.color=solde>=0?'var(--green)':'var(--red)';
+  // Flux du mois : calculés par le module, plus à la main
   const mois=today().slice(0,7);
-  const dataMois=petiteCaisse.filter(m=>m.date?.slice(0,7)===mois);
-  const entrees=dataMois.filter(m=>m.type==='appro').reduce((s,m)=>s+(m.montant||0),0);
-  const sorties=dataMois.filter(m=>m.type==='depense'||m.type==='dépense').reduce((s,m)=>s+(m.montant||0),0);
+  const flux=cptPC?SoldeModule.fluxPeriode(cptPC.id,mois+'-01',today()):{entrees:0,sorties:0};
+  const entrees=flux.entrees, sorties=flux.sorties;
   renderSoldeHeader('pcResumeHeader',{
     soldeActuel:solde, compteId:cptPC?.id,
     entrées:entrees, sorties:sorties,
@@ -3614,46 +3625,46 @@ function renderPetiteCaisse(){
   }
 
   // Appliquer filtres
-  const dF=document.getElementById('fPCDate')?.value;
   const dDebut=document.getElementById('fPCDateDebut')?.value;
   const dFin=document.getElementById('fPCDateFin')?.value;
   const tF=document.getElementById('fPCType')?.value;
   const cF=document.getElementById('fPCCateg')?.value;
   const sF=document.getElementById('fPCSearch')?.value?.toLowerCase();
+  // Définition UNIQUE : un mouvement est un appro, ou c'est une dépense.
+  // Même règle que SoldeModule (sens = type==='appro' ? +1 : -1).
+  const estAppro=m=>m.type==='appro';
   let data=[...petiteCaisse].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
-  if(dF)data=data.filter(m=>m.date===dF);
   if(dDebut)data=data.filter(m=>m.date>=dDebut);
   if(dFin)data=data.filter(m=>m.date<=dFin);
-  // Filtre type strict — appro ou dépense uniquement
-  if(tF==='appro')data=data.filter(m=>m.type==='appro');
-  else if(tF==='depense')data=data.filter(m=>m.type!=='appro');
+  if(tF==='appro')data=data.filter(estAppro);
+  else if(tF==='depense')data=data.filter(m=>!estAppro(m));
   if(cF)data=data.filter(m=>m.categorie===cF);
   if(sF)data=data.filter(m=>(m.libelle||'').toLowerCase().includes(sF));
 
   if(!data.length){
-    tbody.innerHTML=`<tr><td colspan="9"><div class="empty-state"><div class="ei">💰</div>${petiteCaisse.length?'Aucun résultat pour ces filtres':'Aucun mouvement petite caisse'}</div></td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="10"><div class="empty-state"><div class="ei">💰</div>${petiteCaisse.length?'Aucun résultat pour ces filtres':'Aucun mouvement petite caisse'}</div></td></tr>`;
     return;
   }
 
   // Soldes chronologiques via le module SOLDE (source unique)
   const soldesPC=soldesChrono;
 
-  // Sous-total filtré
-  const hasFilter=dF||tF||cF||sF;
-  const totFiltre=data.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
+  // Sous-total filtré — la plage de dates compte comme un filtre
+  const hasFilter=!!(dDebut||dFin||tF||cF||sF);
+  const totFiltre=data.reduce((s,m)=>s+(estAppro(m)?(m.montant||0):-(m.montant||0)),0);
   const sousTotalHtml=hasFilter?`
     <tr style="background:var(--surface2);font-weight:700;font-size:.78rem">
       <td colspan="5" style="text-align:right;padding:6px 10px;color:var(--text2)">${data.length} opération(s) filtrée(s)</td>
       <td class="amt ${totFiltre>=0?'pos':'neg'}">${totFiltre>=0?'+':''}${fmt(Math.abs(totFiltre))}</td>
-      <td colspan="3"></td>
+      <td colspan="4"></td>
     </tr>`:'';
   tbody.innerHTML=data.map((m,i)=>`<tr>
     ${rowNum(i)}
     <td>${fmtD(m.date)} ${m.heure||''}</td>
-    <td><span class="badge ${m.type==='appro'?'bg':'br'}">${m.type==='appro'?'Approvisionnement':'Dépense'}</span></td>
+    <td><span class="badge ${estAppro(m)?'bg':'br'}">${estAppro(m)?'Approvisionnement':'Dépense'}</span></td>
     <td style="font-size:.82rem">${m.libelle||'—'}</td>
     <td style="font-size:.78rem;color:var(--text2)">${m.categorie||'—'}</td>
-    <td class="amt ${m.type==='appro'?'pos':'neg'}">${m.type==='appro'?'+':'-'}${fmt(m.montant)}</td>
+    <td class="amt ${estAppro(m)?'pos':'neg'}">${estAppro(m)?'+':'-'}${fmt(m.montant)}</td>
     <td class="amt ${(soldesPC[m.id]||0)>=0?'':'neg'}">${fmt(soldesPC[m.id]||0)}</td>
     <td style="font-size:.68rem;color:var(--text3);font-family:monospace">${m.ref||'—'}</td>
     <td style="font-size:.75rem;color:var(--text2)">${m.saisie||'—'}</td>
@@ -3661,18 +3672,37 @@ function renderPetiteCaisse(){
   </tr>`).join('') + sousTotalHtml;
 }
 async function delPCMvt(id){
-  if(!confirm('Supprimer ce mouvement petite caisse ?'))return;
   const m=petiteCaisse.find(x=>x.id===id);
   if(!m)return;
-  // Si appro avec compte débité — recrédite le compte source
-  if(m.type==='appro'&&m.caisseSource){
-    const c=comptes.find(x=>x.id===m.caisseSource);
-    if(c){c.solde=(c.solde||0)+m.montant;await saveItem('comptes',c);}
+
+  // Un appro a généré une écriture "sortie" sur le compte source, portant la MÊME ref.
+  // Elle doit être supprimée aussi, sinon le compte source reste débité à vie
+  // et le solde recalculé diverge du solde stocké.
+  const liees = m.ref ? mvts.filter(x=>x.ref===m.ref) : [];
+
+  const avertissement = liees.length
+    ? `\n\n⚠️ Cette opération a débité un autre compte.\n${liees.length} écriture(s) liée(s) seront également supprimée(s).`
+    : '';
+  if(!confirm(`Supprimer ce mouvement petite caisse ?\n${m.libelle||''} — ${fmt(m.montant)} ${DEVISE}${avertissement}`))return;
+
+  for(const lie of liees){
+    mvts=mvts.filter(x=>x.id!==lie.id);
+    await delItem('mvts',lie.id);
   }
   petiteCaisse=petiteCaisse.filter(x=>x.id!==id);
   await delItem('petiteCaisse',id);
+
+  // Soldes : JAMAIS écrits à la main — recalculés par le module
+  const comptesTouches=new Set([...liees.map(l=>l.compte), m.caisseSource].filter(Boolean));
+  const cptPC=comptePC();
+  if(cptPC)comptesTouches.add(cptPC.id);
+  for(const cid of comptesTouches){
+    await SoldeModule.synchroniserSolde(cid);
+  }
+  saveLocal();
+
   renderPetiteCaisse();renderDashboard();
-  toast('Mouvement supprimé ✓');
+  toast(liees.length?`Mouvement supprimé ✓ — ${liees.length} écriture(s) liée(s) annulée(s)`:'Mouvement supprimé ✓');
 }
 window.renderPetiteCaisse=renderPetiteCaisse;
 window.delPCMvt=delPCMvt;
@@ -3768,12 +3798,15 @@ async function savePCMouvement(){
             toast(`❌ Solde insuffisant sur "${c.nom}" — Disponible : ${fmt(soldeSource)} ${DEVISE}, demandé : ${fmt(montant)} ${DEVISE}`,'err');
             _pcSaving=false;return;
           }
-          c.solde=soldeSource-montant;
-          await saveItem('comptes',c);
+          // On enregistre l'écriture, PUIS le module recalcule le solde.
+          // Le solde n'est jamais posé à la main : le mouvement est la source, le solde en découle.
           const m={id:uid(),date,compte:c.id,type:'sortie',
             libelle:`Appro petite caisse${libelle?' — '+libelle:''}`,
-            ref:refAuto,montant,soldeApres:c.solde,saisie:currentUser.nom,ts:Date.now()};
-          mvts.push(m);await saveItem('mvts',m);
+            ref:refAuto,montant,saisie:currentUser.nom,ts:Date.now()};
+          mvts.push(m);
+          m.soldeApres=SoldeModule.soldeCompte(c.id);
+          await saveItem('mvts',m);
+          await SoldeModule.synchroniserSolde(c.id);
         }
       }
     }
@@ -3803,13 +3836,12 @@ async function savePCMouvement(){
     }
   } finally {
     _pcSaving=false;
-    // Mettre à jour le solde Firebase du compte Petite Caisse
-    const cptPC=comptes.find(c=>c.nom.toLowerCase().includes('petite'));
+    // Solde Petite Caisse : recalculé par le module, pas par une formule parallèle.
+    // synchroniserSolde n'écrit dans Firebase que si la valeur a réellement changé,
+    // donc un abandon de saisie ne déclenche aucune écriture inutile.
+    const cptPC=comptePC();
     if(cptPC){
-      const soldeInit=cptPC.soldeInit||0;
-      const nouveauSolde=soldeInit+petiteCaisse.reduce((s,m)=>s+(m.type==='appro'?m.montant:-(m.montant||0)),0);
-      cptPC.solde=nouveauSolde;
-      await saveItem('comptes',cptPC);
+      await SoldeModule.synchroniserSolde(cptPC.id);
       saveLocal();
     }
   }
