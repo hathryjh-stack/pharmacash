@@ -267,6 +267,7 @@ function importerDonnees(e){
 const fmt=n=>new Intl.NumberFormat('fr-FR').format(Math.round(n||0));
 const rowNum=i=>`<td style="color:var(--text3);font-size:.68rem;font-weight:600;min-width:24px;text-align:right;padding-right:8px;user-select:none">${i+1}</td>`;
 const today=()=>new Date().toISOString().split('T')[0];
+window.today=today;
 const nowTm=()=>new Date().toTimeString().slice(0,5);
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,5);
 const fmtD=d=>{if(!d)return'—';const[y,m,j]=d.split('-');return`${j}/${m}/${y}`;};
@@ -2613,8 +2614,9 @@ let _rapportVue = 'globale'; // 'globale' | 'depots' | 'psrm'
 function setRapportVue(vue) {
   _rapportVue = vue;
   // Mettre à jour les boutons
+  const btnIds = {globale:'rVueGlobale', depots:'rVueDepots', psrm:'rVuePSRM'};
   ['globale','depots','psrm'].forEach(v => {
-    const btn = document.getElementById('rVue'+v.charAt(0).toUpperCase()+v.slice(1));
+    const btn = document.getElementById(btnIds[v]);
     if (!btn) return;
     btn.style.background = v === vue ? 'var(--green)' : '';
     btn.style.color = v === vue ? '#fff' : '';
@@ -2623,6 +2625,7 @@ function setRapportVue(vue) {
   renderRapport();
 }
 window.setRapportVue = setRapportVue;
+window.renderRapport = renderRapport;
 
 function renderRapport(){
   const t=today(),p=document.getElementById('rPeriode').value;
@@ -2656,7 +2659,11 @@ function renderRapport(){
   const totR=recF.reduce((s,r)=>s+(r.montant||0),0),totV=verF.reduce((s,v)=>s+(v.montant||0),0),
     totC=verF.filter(v=>v.statut==='confirmé').reduce((s,v)=>s+(v.montant||0),0),
     totA=verF.filter(v=>v.statut==='en attente').reduce((s,v)=>s+(v.montant||0),0),ecart=totR-totC;
-  const byPDV={};pdvs.forEach(p=>{byPDV[p.id]={nom:p.nom,type:p.type,rec:0,ver:0,verC:0}});
+  // Le tableau "Performance par PDV" doit suivre la vue sélectionnée
+  const pdvsVue = _rapportVue==='psrm'   ? pdvs.filter(p=>p.type==='principale')
+                : _rapportVue==='depots' ? pdvs.filter(p=>p.type!=='principale')
+                : pdvs;
+  const byPDV={};pdvsVue.forEach(p=>{byPDV[p.id]={nom:p.nom,type:p.type,rec:0,ver:0,verC:0}});
   recF.forEach(r=>{if(byPDV[r.pdv])byPDV[r.pdv].rec+=r.montant||0});
   verF.forEach(v=>{if(byPDV[v.pdv]){byPDV[v.pdv].ver+=v.montant||0;if(v.statut==='confirmé')byPDV[v.pdv].verC+=v.montant||0}});
   const byCanal={};recF.forEach(r=>{if(!byCanal[r.canal])byCanal[r.canal]=0;byCanal[r.canal]+=r.montant||0});
@@ -2677,9 +2684,7 @@ function renderRapport(){
       <div class="stat-card purple"><div class="stat-lbl">Confirmés</div><div class="stat-val purple">${fmt(totC)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card amber"><div class="stat-lbl">En attente</div><div class="stat-val amber">${fmt(totA)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card ${ecart>=0?'green':'red'}"><div class="stat-lbl">Écart CA/Versé</div><div class="stat-val ${ecart>=0?'green':'red'}">${ecart>=0?'+':''}${fmt(ecart)}</div><div class="stat-sub">${DEVISE}</div></div>
-    </div>
-      <div class="stat-card ${ecart>0?'amber':ecart===0?'green':'red'}"><div class="stat-lbl">Écart</div><div class="stat-val ${ecart>0?'amber':ecart===0?'green':'red'}">${fmt(ecart)}</div><div class="stat-sub">${DEVISE}</div></div>
-      <div class="stat-card green"><div class="stat-lbl">✓ Disponible banques</div><div class="stat-val green">${fmt(totalDispo())}</div><div class="stat-sub">${DEVISE}</div></div>
+      <div class="stat-card green"><div class="stat-lbl">✓ Disponible banques</div><div class="stat-val green">${fmt(totalDispo())}</div><div class="stat-sub">${DEVISE} — global</div></div>
       <div class="stat-card amber"><div class="stat-lbl">⏳ En transit MM</div><div class="stat-val amber">${fmt(totalTransit())}</div><div class="stat-sub">${DEVISE}</div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
@@ -3669,6 +3674,7 @@ async function delPCMvt(id){
   renderPetiteCaisse();renderDashboard();
   toast('Mouvement supprimé ✓');
 }
+window.renderPetiteCaisse=renderPetiteCaisse;
 window.delPCMvt=delPCMvt;
 
 function openPCModal(type){
