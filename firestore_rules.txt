@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ═══════════════════════════════════════════════════════════
+    // PHARMACASH — RÈGLES DE SÉCURITÉ (phase 1)
+    //
+    // Principe : PLUS AUCUN accès sans authentification Firebase.
+    // Avant ces règles, n'importe qui sur internet pouvait lire
+    // ou effacer toute la comptabilité. Après : seuls les comptes
+    // créés dans Authentication → Users peuvent accéder.
+    //
+    // ⚠️ À COLLER EN DERNIER, après avoir vérifié que le login
+    //    fonctionne avec le nouveau app.js. Sinon : app bloquée.
+    //
+    // Console Firebase → Firestore Database → Règles → coller → Publier
+    // ═══════════════════════════════════════════════════════════
+
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Phase 2 (plus tard) : restreindre par rôle — par exemple
+    // interdire les suppressions aux non-admins côté serveur.
+    // Nécessite de réorganiser la collection users par email.
+    // À faire dans un chantier dédié.
+  }
+}

@@ -52,6 +52,8 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getFirestore, collection, doc, getDocs,
          setDoc, deleteDoc, onSnapshot, serverTimestamp }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 // ── CONFIGURATION — REMPLACE CES VALEURS ──────────────
 const FIREBASE_CONFIG = {
@@ -69,11 +71,18 @@ const PHARMACIE_NOM    = "Pharmacie Saint Raphaël de M'Bengué";
 const DEVISE           = "FCFA";
 
 // ── FIREBASE INIT ──────────────────────────────────────
-let db, useFirebase = false;
+// Les logins de l'app (admin, awa…) sont convertis en emails Firebase Auth
+// via ce suffixe. NE JAMAIS LE CHANGER après la migration, sinon plus personne
+// ne peut se connecter (les comptes Auth sont créés avec ce suffixe).
+const AUTH_EMAIL_SUFFIX = '@pharmacash-mbengue.app';
+const loginToEmail = login => login.includes('@') ? login.trim().toLowerCase()
+                                                  : login.trim().toLowerCase() + AUTH_EMAIL_SUFFIX;
+let db, auth, useFirebase = false;
 try {
   if (!FIREBASE_CONFIG.apiKey.startsWith('COLLE')) {
     const app = initializeApp(FIREBASE_CONFIG);
     db = getFirestore(app);
+    auth = getAuth(app);
     useFirebase = true;
   }
 } catch(e) { console.warn('Firebase non configuré', e); }
@@ -483,11 +492,52 @@ function dispoBadge(c){
 async function doLogin(){
   const login=document.getElementById('loginUser').value.trim();
   const pass=document.getElementById('loginPass').value;
-  const u=users.find(x=>x.login===login&&x.pass===pass&&x.actif!==false);
-  if(!u){document.getElementById('loginErr').style.display='block';return;}
-  document.getElementById('loginErr').style.display='none';
+  const errEl=document.getElementById('loginErr');
+  const showErr=msg=>{errEl.textContent=msg||'Identifiants incorrects';errEl.style.display='block';};
+  errEl.style.display='none';
+  if(!login||!pass){showErr('Login et mot de passe obligatoires');return;}
+
+  // ── Mode local (Firebase absent) : ancien mécanisme, inchangé ──
+  if(!useFirebase){
+    const u=users.find(x=>x.login===login&&x.pass===pass&&x.actif!==false);
+    if(!u){showErr();return;}
+    u.lastLogin=new Date().toISOString();
+    currentUser=u; startApp(); return;
+  }
+
+  // ── Mode Firebase : l'authentification PRÉCÈDE tout accès aux données ──
+  try{
+    sync('syncing','Authentification…');
+    await signInWithEmailAndPassword(auth, loginToEmail(login), pass);
+  }catch(e){
+    sync('error','');
+    const messages={
+      'auth/invalid-credential':'Identifiants incorrects',
+      'auth/user-not-found':'Compte inexistant — contacte l\'administrateur',
+      'auth/wrong-password':'Mot de passe incorrect',
+      'auth/too-many-requests':'Trop de tentatives — réessaie dans quelques minutes',
+      'auth/network-request-failed':'Pas de connexion internet',
+      'auth/user-disabled':'Compte désactivé — contacte l\'administrateur'
+    };
+    showErr(messages[e.code]||'Connexion refusée ('+(e.code||e.message)+')');
+    return;
+  }
+
+  // Authentifié → charger les données puis retrouver le profil applicatif
+  try{ await loadAll(); }catch(e){ console.warn('loadAll',e); }
+  const u=users.find(x=>x.login&&x.login.toLowerCase()===login.toLowerCase());
+  if(!u){
+    await signOut(auth);
+    showErr('Authentifié, mais profil applicatif introuvable — contacte l\'administrateur');
+    return;
+  }
+  if(u.actif===false){
+    await signOut(auth);
+    showErr('Compte désactivé — contacte l\'administrateur');
+    return;
+  }
   u.lastLogin=new Date().toISOString();
-  await saveItem('users',u);
+  saveItem('users',u);
   currentUser=u; startApp();
 }
 window.doLogin=doLogin;
@@ -496,8 +546,10 @@ document.addEventListener('keydown',e=>{
 });
 function doLogout(){
   currentUser=null;
+  if(useFirebase&&auth)signOut(auth).catch(()=>{});
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('appShell').style.display='none';
+  document.getElementById('loginPass').value='';
 }
 window.doLogout=doLogout;
 function startApp(){
@@ -511,7 +563,7 @@ function startApp(){
     const e=document.getElementById(id);if(e)e.value=currentUser.nom;
   });
   document.getElementById('caisseDate').value=today();
-  populateSelects(); updateBackupUI(); scheduleAutoBackup(); subscribeAll();
+  populateSelects(); updateBackupUI(); scheduleAutoBackup(); subscribeAll(); scheduleAutoRAN();
   goTo('dashboard');
 }
 
@@ -3640,7 +3692,7 @@ function openUserModal(id){
   document.getElementById('mUserTitle').textContent=id?'Modifier':'Nouvel utilisateur';
   document.getElementById('mUserId').value=id||'';const u=id?users.find(x=>x.id===id):{};
   document.getElementById('mUNom').value=u.nom||'';document.getElementById('mULogin').value=u.login||'';
-  document.getElementById('mUPass').value='';document.getElementById('mURole').value=u.role||'collaborateur';
+  document.getElementById('mURole').value=u.role||'collaborateur';
   document.getElementById('mUTel').value=u.tel||'';
   document.getElementById('mUPDV').innerHTML='<option value="">Tous</option>'+pdvs.map(p=>`<option value="${p.id}"${u.pdv===p.id?' selected':''}>${p.nom}</option>`).join('');
   openM('mUser');
@@ -3649,15 +3701,18 @@ window.openUserModal=openUserModal;
 function editUser(id){openUserModal(id);}
 window.editUser=editUser;
 async function saveUser(){
-  const nom=document.getElementById('mUNom').value.trim(),login=document.getElementById('mULogin').value.trim(),pass=document.getElementById('mUPass').value;
+  const nom=document.getElementById('mUNom').value.trim(),login=document.getElementById('mULogin').value.trim();
   if(!nom||!login){toast('Nom et login obligatoires','err');return;}
   const id=document.getElementById('mUserId').value;
-  if(!id&&!pass){toast('Mot de passe obligatoire','err');return;}
   if(!id&&users.find(u=>u.login===login)){toast('Login déjà utilisé','err');return;}
+  // SÉCURITÉ : les mots de passe ne sont PLUS JAMAIS stockés dans la base.
+  // L'accès est géré par Firebase Authentication (console Firebase → Authentication).
   const data={nom,login,role:document.getElementById('mURole').value,pdv:document.getElementById('mUPDV').value,tel:document.getElementById('mUTel').value,actif:true};
-  if(pass)data.pass=pass;
   if(id){Object.assign(users.find(u=>u.id===id),data);await saveItem('users',users.find(u=>u.id===id));}
-  else{data.id=uid();data.lastLogin=null;users.push(data);await saveItem('users',data);}
+  else{
+    data.id=uid();data.lastLogin=null;users.push(data);await saveItem('users',data);
+    if(useFirebase)alert(`Profil créé ✓\n\nIMPORTANT — pour que ${nom} puisse se connecter, crée son compte d'accès dans la console Firebase :\nAuthentication → Users → Add user\nEmail : ${loginToEmail(login)}\nMot de passe : celui de ton choix (min. 6 caractères)`);
+  }
   closeM('mUser');renderUsers();toast('Utilisateur enregistré ✓');
 }
 window.saveUser=saveUser;
@@ -4353,7 +4408,7 @@ async function importerExcel(e){
       id: normStr(r['ID (auto)'])||uid(),
       nom: normStr(r['Nom complet *']),
       login: normStr(r['Login (identifiant) *']),
-      pass: normStr(r['Mot de passe *']),
+      // pass : colonne Excel ignorée — accès géré par Firebase Authentication
       role: normStr(r['Rôle *'])||'collaborateur',
       pdv: normStr(r['ID PDV assigné']),
       tel: normStr(r['Téléphone']),
@@ -4425,18 +4480,19 @@ async function importerExcel(e){
       if(idx>-1) comptes[idx]={...comptes[idx],...c}; else comptes.push(c);
       await saveItem('comptes',comptes.find(x=>x.id===c.id));
     }
-    // Users
+    // Users — SÉCURITÉ : les mots de passe du fichier Excel sont IGNORÉS,
+    // l'accès est géré exclusivement par Firebase Authentication.
     for(const u of newUsers){
-      // Ne remplace pas le mot de passe si vide ou placeholder
+      delete u.pass;
       const existing=users.find(x=>x.id===u.id||x.login===u.login);
       if(existing){
-        if(!u.pass||u.pass.includes('[TON_MOT_DE_PASSE]')) u.pass=existing.pass;
         Object.assign(existing,u);
+        delete existing.pass;
         await saveItem('users',existing);
       } else {
-        if(u.pass&&!u.pass.includes('[TON_MOT_DE_PASSE]')) users.push(u);
-        else { toast(`⚠️ Utilisateur "${u.nom}" ignoré : mot de passe manquant`,'err'); continue; }
+        users.push(u);
         await saveItem('users',u);
+        if(useFirebase)toast(`⚠️ "${u.nom}" importé — créer son accès dans Firebase Console (${loginToEmail(u.login||'')})`,'info');
       }
     }
     // Recettes
@@ -5208,11 +5264,34 @@ window.corrigerImputationsTetePont = corrigerImputationsTetePont;
 
 window.refreshPage=refreshPage;
 async function init(){
-  if(useFirebase){sync('syncing','Connexion…');try{await loadAll();sync('ok','🔴 Temps réel');}catch(e){sync('error','Mode local');}}
-  else sync('ok','Mode local');
   document.getElementById('loadingOverlay').style.display='none';
-  document.getElementById('loginScreen').style.display='flex';
-  document.getElementById('loginUser').focus();
-  scheduleAutoRAN();
+
+  if(!useFirebase){
+    sync('ok','Mode local');
+    document.getElementById('loginScreen').style.display='flex';
+    document.getElementById('loginUser').focus();
+    return;
+  }
+
+  // Plus AUCUN accès Firestore avant authentification (les règles l'interdisent).
+  // Si une session Firebase persiste (poste de la pharmacie), on reprend sans retaper.
+  let premierPassage=true;
+  onAuthStateChanged(auth, async(fbUser)=>{
+    if(!premierPassage)return;
+    premierPassage=false;
+    if(fbUser){
+      sync('syncing','Reprise de session…');
+      try{
+        await loadAll();
+        const login=(fbUser.email||'').split('@')[0];
+        const u=users.find(x=>x.login&&x.login.toLowerCase()===login);
+        if(u&&u.actif!==false){ currentUser=u; startApp(); return; }
+        await signOut(auth);
+      }catch(e){ console.warn('reprise session',e); }
+    }
+    sync('ok','');
+    document.getElementById('loginScreen').style.display='flex';
+    document.getElementById('loginUser').focus();
+  });
 }
 init();
