@@ -187,7 +187,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
         <div class="pg-header"><div><div class="pg-title">Clôture de caisse — Principale</div></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
           <div style="display:flex;gap:3px">
-            <button class="btn btn-ghost btn-xs" onclick="exportCaisse('print')" title="Imprimer">🖨️</button>
+            <button class="btn btn-ghost btn-xs" onclick="grandLivreCaisseP('print')" title="Grand-livre — reconstruction chronologique imprimable">📒</button><button class="btn btn-ghost btn-xs" onclick="exportCaisse('print')" title="Imprimer">🖨️</button>
             <button class="btn btn-ghost btn-xs" onclick="exportCaisse('excel')" title="Excel">📊</button>
             <button class="btn btn-ghost btn-xs" onclick="exportCaisse('word')" title="Word">📝</button>
             <button class="btn btn-ghost btn-xs" onclick="exportCaisse('pdf')" title="PDF">📄</button>
@@ -205,7 +205,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
         <div class="pg-header"><div><div class="pg-title">Établissements financiers</div><div class="pg-sub">✓ Disponible = Banques/Caisse · ⏳ En transit = Mobile Money</div></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
             <div style="display:flex;gap:3px">
-              <button class="btn btn-ghost btn-xs" onclick="exportMvts('print')" title="Imprimer">🖨️</button>
+              <button class="btn btn-ghost btn-xs" onclick="grandLivreCompte('print')" title="Grand-livre — reconstruction chronologique imprimable">📒</button><button class="btn btn-ghost btn-xs" onclick="exportMvts('print')" title="Imprimer">🖨️</button>
               <button class="btn btn-ghost btn-xs" onclick="exportMvts('excel')" title="Excel">📊</button>
               <button class="btn btn-ghost btn-xs" onclick="exportMvts('word')" title="Word">📝</button>
               <button class="btn btn-ghost btn-xs" onclick="exportMvts('pdf')" title="PDF">📄</button>
@@ -292,7 +292,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
             <div style="font-size:.85rem;color:var(--text2)">Solde théorique : <b id="pcSolde" style="color:var(--green)">0 FCFA</b></div>
             <div style="display:flex;gap:3px">
-              <button class="btn btn-ghost btn-xs" onclick="exportPetiteCaisse('print')" title="Imprimer">🖨️</button>
+              <button class="btn btn-ghost btn-xs" onclick="grandLivrePC('print')" title="Grand-livre — reconstruction chronologique imprimable">📒</button><button class="btn btn-ghost btn-xs" onclick="exportPetiteCaisse('print')" title="Imprimer">🖨️</button>
               <button class="btn btn-ghost btn-xs" onclick="exportPetiteCaisse('excel')" title="Excel">📊</button>
               <button class="btn btn-ghost btn-xs" onclick="exportPetiteCaisse('word')" title="Word">📝</button>
               <button class="btn btn-ghost btn-xs" onclick="exportPetiteCaisse('pdf')" title="PDF">📄</button>

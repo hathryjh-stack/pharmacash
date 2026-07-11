@@ -332,10 +332,14 @@ const SoldeModule = (function() {
       if (m.compte !== compteId) continue;
       if (dateMax && m.date > dateMax) continue;
       result.push({
+        id: m.id,
         date: m.date,
         ts: m.ts || 0,
         sens: m.type === 'entrée' ? 1 : -1,
         montant: m.montant || 0,
+        libelle: m.libelle || '',
+        ref: m.ref || '',
+        saisie: m.saisie || '',
         src: 'mvt'
       });
     }
@@ -343,11 +347,15 @@ const SoldeModule = (function() {
     // 2. Transferts MM → Banque (sortie du src, entrée du dst)
     for (const t of transferts) {
       if (dateMax && t.date > dateMax) continue;
+      const nomSrc = comptes.find(c => c.id === t.compteSrc)?.nom || '?';
+      const nomDst = comptes.find(c => c.id === t.compteDst)?.nom || '?';
       if (t.compteSrc === compteId) {
-        result.push({ date: t.date, ts: t.ts || 0, sens: -1, montant: t.montant || 0, src: 'transfert-out' });
+        result.push({ id: t.id, date: t.date, ts: t.ts || 0, sens: -1, montant: t.montant || 0,
+          libelle: t.libelle || `Transfert vers ${nomDst}`, ref: t.ref || '', saisie: t.saisie || '', src: 'transfert-out' });
       }
       if (t.compteDst === compteId) {
-        result.push({ date: t.date, ts: t.ts || 0, sens: 1, montant: t.montant || 0, src: 'transfert-in' });
+        result.push({ id: t.id, date: t.date, ts: t.ts || 0, sens: 1, montant: t.montant || 0,
+          libelle: t.libelle || `Transfert depuis ${nomSrc}`, ref: t.ref || '', saisie: t.saisie || '', src: 'transfert-in' });
       }
     }
 
@@ -357,10 +365,14 @@ const SoldeModule = (function() {
       for (const p of petiteCaisse) {
         if (dateMax && p.date > dateMax) continue;
         result.push({
+          id: p.id,
           date: p.date,
           ts: p.ts || 0,
           sens: p.type === 'appro' ? 1 : -1,
           montant: p.montant || 0,
+          libelle: p.libelle || (p.type === 'appro' ? 'Approvisionnement' : 'Dépense'),
+          ref: p.ref || '',
+          saisie: p.saisie || '',
           src: 'petiteCaisse'
         });
       }
@@ -802,6 +814,84 @@ function exportUniversel(titre, colonnes, lignes, opts={}){
   if(format==='pdf')toast('Dans la fenêtre → "Enregistrer en PDF"');
 }
 window.exportUniversel=exportUniversel;
+
+// ══════════════════════════════════════════════════════
+// [SECTION:GRAND_LIVRE] GRAND-LIVRE — reconstruction chronologique imprimable
+// Reconstruit le solde mouvement par mouvement depuis le REPORT À NOUVEAU.
+// Source unique : SoldeModule. Le document se contrôle lui-même (dernière ligne).
+// ══════════════════════════════════════════════════════
+const veille=d=>{const x=new Date(d+'T00:00:00');x.setDate(x.getDate()-1);return x.toISOString().slice(0,10);};
+
+function imprimerGrandLivre(compteId, debut, fin, format='print'){
+  const cpt=comptes.find(c=>c.id===compteId);
+  if(!cpt){toast('Compte introuvable','err');return;}
+  fin=fin||today();
+  if(debut&&debut>fin){toast('La date de début est postérieure à la date de fin','err');return;}
+
+  // Report à nouveau = solde à la veille du début. Sans date de début : le soldeInit.
+  const ran=debut?SoldeModule.soldeCompte(compteId,veille(debut)):(cpt.soldeInit??0);
+
+  const mvtsPeriode=SoldeModule.mouvementsCompte(compteId,fin)
+    .filter(m=>!debut||m.date>=debut);
+
+  // Reconstruction chronologique ligne à ligne
+  let running=ran;
+  const lignes=mvtsPeriode.map(m=>{
+    running+=m.sens*m.montant;
+    return [fmtD(m.date), m.libelle||'—',
+            m.sens>0?fmt(m.montant):'', m.sens<0?fmt(m.montant):'',
+            fmt(running), m.ref||'—', m.saisie||'—'];
+  });
+  lignes.unshift([debut?fmtD(debut):'—','◄ REPORT À NOUVEAU','','',fmt(ran),'—','—']);
+
+  const entrees=mvtsPeriode.filter(m=>m.sens>0).reduce((s,m)=>s+m.montant,0);
+  const sorties=mvtsPeriode.filter(m=>m.sens<0).reduce((s,m)=>s+m.montant,0);
+
+  // AUTO-CONTRÔLE : le solde reconstruit doit égaler le solde du module.
+  // S'ils divergent, le relevé le dit au lieu de mentir en silence.
+  const soldeModule=SoldeModule.soldeCompte(compteId,fin);
+  const ecart=running-soldeModule;
+
+  const totaux=[
+    ['', `TOTAUX — ${mvtsPeriode.length} mouvement(s)`, fmt(entrees), fmt(sorties), '', '', ''],
+    ['', `SOLDE AU ${fmtD(fin)}`, '', '', fmt(running), '', ''],
+    ['', 'CONTRÔLE', '', '', ecart===0?'✓ conforme':`✗ ÉCART ${fmt(ecart)}`, '', '']
+  ];
+
+  if(ecart!==0)toast(`⚠️ Écart de ${fmt(ecart)} ${DEVISE} détecté — signalé sur le relevé`,'err');
+
+  exportUniversel(
+    `Grand-livre — ${cpt.nom}`,
+    ['Date','Libellé','Entrée','Sortie','Solde après','Référence','Saisi par'],
+    lignes,
+    { format,
+      periode: debut?`Du ${fmtD(debut)} au ${fmtD(fin)}`:`Depuis l'ouverture — jusqu'au ${fmtD(fin)}`,
+      totaux }
+  );
+}
+window.imprimerGrandLivre=imprimerGrandLivre;
+
+// ── Déclencheurs par page : le compte et la période sont déduits du contexte ──
+const _v=id=>document.getElementById(id)?.value||'';
+
+function grandLivrePC(format='print'){
+  const c=comptePC();
+  if(!c){toast('Compte Petite Caisse introuvable','err');return;}
+  imprimerGrandLivre(c.id,_v('fPCDateDebut'),_v('fPCDateFin'),format);
+}
+function grandLivreCaisseP(format='print'){
+  const c=getCaisseP();
+  if(!c){toast('Caisse Principale introuvable','err');return;}
+  imprimerGrandLivre(c.id,_v('fCPDateDebut'),_v('fCPDateFin'),format);
+}
+function grandLivreCompte(format='print'){
+  const id=_v('fMCompte');
+  if(!id){toast('Sélectionne d\'abord un compte dans la liste','err');return;}
+  imprimerGrandLivre(id,_v('fMDateDebut'),_v('fMDateFin'),format);
+}
+window.grandLivrePC=grandLivrePC;
+window.grandLivreCaisseP=grandLivreCaisseP;
+window.grandLivreCompte=grandLivreCompte;
 
 // Bouton d'export réutilisable (retourne le HTML du bouton)
 function btnExport(fnName){
