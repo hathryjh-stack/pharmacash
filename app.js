@@ -175,14 +175,24 @@ function subscribeAll(){
   sub('recettes',  v=>{recettes=v;},  ()=>{ refreshPg('recettes'); renderDashboard(); });
   sub('versements',v=>{versements=v;},()=>{ refreshPg('versements'); renderDashboard(); });
   sub('clotures',  v=>{clotures=v;},  ()=>{ refreshPg('caisse'); });
-  sub('mvts',      v=>{mvts=v;},      ()=>{ refreshPg('banques'); });
+  sub('mvts',      v=>{mvts=v;},      ()=>{ refreshPg('banques'); refreshPg('caisseprinc'); });
   sub('comptes',   v=>{comptes=v;},   ()=>{ renderDashboard(); refreshPg('banques'); });
   sub('transferts',v=>{transferts=v;},()=>{ refreshPg('banques'); renderDashboard(); });
+  // ── Collections qui manquaient : sans elles, une saisie sur le poste A
+  //    n'apparaissait sur le poste B qu'après rechargement complet ──
+  sub('petiteCaisse',v=>{petiteCaisse=v;},()=>{ refreshPg('petitecaisse'); renderDashboard(); });
+  sub('users',       v=>{if(v.length)users=v;},()=>{ refreshPg('utilisateurs'); });
+  sub('pdvs',        v=>{if(v.length)pdvs=v;}, ()=>{ populateSelects(); renderDashboard(); });
+  sub('caissieresDB',v=>{caissieresDB=v;},()=>{ refreshPg('caissiere'); });
+  sub('vacationsDB', v=>{vacationsDB=v;}, ()=>{ refreshPg('caissiere'); });
+  sub('rapportsNouveaux',v=>{rapportsNouveaux=v;},()=>{ refreshPg('ran'); });
 }
 function refreshPg(name){
   const el=document.getElementById('pg-'+name);
   if(el&&el.classList.contains('active')){
-    ({recettes:renderRecettes,versements:renderVersements,caisse:renderCaisse,banques:renderBanques})[name]?.();
+    ({recettes:renderRecettes,versements:renderVersements,caisse:renderCaisse,banques:renderBanques,
+      petitecaisse:renderPetiteCaisse,caisseprinc:renderCaisseP,utilisateurs:renderUsers,
+      caissiere:renderSuiviCaissiere,ran:renderRAN})[name]?.();
   }
 }
 function saveLocal(){
@@ -200,8 +210,12 @@ async function delItem(col,id){ saveLocal(); if(useFirebase){await fbDel(col,id)
 // [SECTION:BACKUP] BACKUP
 // ══════════════════════════════════════════════════════
 function buildBlob(){
+  // TOUTES les collections — un backup incomplet est pire qu'aucun backup :
+  // il donne une fausse assurance. v4.1 = ajout de petiteCaisse, caissieresDB,
+  // vacationsDB, rapportsNouveaux, rubriques (absents des backups v4.0).
   const data={users,pdvs,comptes,recettes,versements,mvts,clotures,transferts,
-    exportedAt:new Date().toISOString(),version:'4.0',pharmacie:PHARMACIE_NOM};
+    petiteCaisse,caissieresDB,vacationsDB,rapportsNouveaux,rubriques,
+    exportedAt:new Date().toISOString(),version:'4.1',pharmacie:PHARMACIE_NOM};
   return new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
 }
 function backupPC(){
@@ -250,18 +264,29 @@ function importerDonnees(e){
   reader.onload=async ev=>{
     try{
       const data=JSON.parse(ev.target.result);
-      if(!confirm(`Importer sauvegarde du ${data.exportedAt?new Date(data.exportedAt).toLocaleString('fr-FR'):'?'}\n⚠️ Remplace toutes les données.`))return;
-      if(data.users)users=data.users;if(data.pdvs)pdvs=data.pdvs;
+      const ancien=!data.version||data.version<'4.1';
+      if(!confirm(`Importer sauvegarde du ${data.exportedAt?new Date(data.exportedAt).toLocaleString('fr-FR'):'?'}${ancien?'\n\n⚠️ Backup ancien format (v4.0) : petite caisse, suivi caissières et RAN n\'y figurent pas — les données actuelles de ces modules seront CONSERVÉES.':''}\n\n⚠️ Remplace toutes les données.`))return;
+      // Les backups v4.0 contiennent des mots de passe en clair — on les purge
+      // à l'import pour ne jamais les réintroduire dans Firestore.
+      if(data.users)users=data.users.map(({pass,...reste})=>reste);
+      if(data.pdvs)pdvs=data.pdvs;
       if(data.comptes)comptes=data.comptes;if(data.recettes)recettes=data.recettes;
       if(data.versements)versements=data.versements;if(data.mvts)mvts=data.mvts;
       if(data.clotures)clotures=data.clotures;if(data.transferts)transferts=data.transferts;
+      if(data.petiteCaisse)petiteCaisse=data.petiteCaisse;
+      if(data.caissieresDB)caissieresDB=data.caissieresDB;
+      if(data.vacationsDB)vacationsDB=data.vacationsDB;
+      if(data.rapportsNouveaux)rapportsNouveaux=data.rapportsNouveaux;
+      if(data.rubriques){rubriques=data.rubriques;saveRubriques();}
       saveLocal();
       if(useFirebase){
         sync('syncing','Upload…');
         const all=[...users.map(x=>['users',x]),...pdvs.map(x=>['pdvs',x]),...comptes.map(x=>['comptes',x]),
           ...recettes.map(x=>['recettes',x]),...versements.map(x=>['versements',x]),
-          ...mvts.map(x=>['mvts',x]),...clotures.map(x=>['clotures',x]),...(transferts||[]).map(x=>['transferts',x])];
-        for(const[col,x]of all)await fbSave(col,x.id,x);
+          ...mvts.map(x=>['mvts',x]),...clotures.map(x=>['clotures',x]),...(transferts||[]).map(x=>['transferts',x]),
+          ...(petiteCaisse||[]).map(x=>['petiteCaisse',x]),...(caissieresDB||[]).map(x=>['caissieresDB',x]),
+          ...(vacationsDB||[]).map(x=>['vacationsDB',x]),...(rapportsNouveaux||[]).map(x=>['rapportsNouveaux',x])];
+        for(const[col,x]of all)if(x&&x.id)await fbSave(col,x.id,x);
         sync('ok','🔴 Temps réel');
       }
       populateSelects();renderDashboard();toast('Données importées ✓');closeM('mBackup');
