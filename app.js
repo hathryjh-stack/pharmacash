@@ -146,6 +146,9 @@ async function fbLoad(col){
 async function fbSave(col,id,data){
   if(!useFirebase) return;
   const clean=JSON.parse(JSON.stringify(data));
+  // BLINDAGE : aucun mot de passe ne doit JAMAIS être écrit dans Firestore,
+  // quelle qu'en soit la source (login, restauration, cache périmé d'un poste).
+  if(col==='users')delete clean.pass;
   try{ await setDoc(doc(db,col,id),{...clean,_ts:serverTimestamp()}); }
   catch(e){ console.warn('fbSave',e); }
 }
@@ -218,12 +221,80 @@ function buildBlob(){
     exportedAt:new Date().toISOString(),version:'4.1',pharmacie:PHARMACIE_NOM};
   return new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
 }
-function backupPC(){
+// ══════════════════════════════════════════════════════
+// [SECTION:BACKUP_DOSSIER] DOSSIER DE SAUVEGARDE DÉDIÉ
+// L'utilisateur choisit UNE FOIS son dossier (ex: BACKUP PHARMACASH PRO) ;
+// tous les backups s'y écrivent ensuite directement, y compris l'auto-23h.
+// Le handle du dossier ne peut vivre que dans IndexedDB (pas localStorage).
+// ══════════════════════════════════════════════════════
+const idbKV={
+  _open:()=>new Promise((res,rej)=>{
+    const r=indexedDB.open('pharmacash_fs',1);
+    r.onupgradeneeded=()=>r.result.createObjectStore('kv');
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  }),
+  get:async k=>{const d=await idbKV._open();return new Promise((res,rej)=>{
+    const t=d.transaction('kv').objectStore('kv').get(k);
+    t.onsuccess=()=>res(t.result); t.onerror=()=>rej(t.error);});},
+  set:async(k,v)=>{const d=await idbKV._open();return new Promise((res,rej)=>{
+    const t=d.transaction('kv','readwrite').objectStore('kv').put(v,k);
+    t.onsuccess=()=>res(); t.onerror=()=>rej(t.error);});}
+};
+
+async function choisirDossierBackup(){
+  if(!('showDirectoryPicker' in window)){
+    alert('Ton navigateur ne permet pas de choisir un dossier.\nUtilise Chrome ou Edge pour cette fonctionnalité.');return;
+  }
+  try{
+    const h=await window.showDirectoryPicker({mode:'readwrite',startIn:'documents'});
+    await idbKV.set('backupDir',h);
+    await refreshBackupDirLabel();
+    toast(`Dossier de sauvegarde : ${h.name} ✓`);
+  }catch(e){ if(e.name!=='AbortError')toast('Choix du dossier annulé','err'); }
+}
+window.choisirDossierBackup=choisirDossierBackup;
+
+// interactif=true : clic utilisateur → on peut redemander la permission.
+// interactif=false : auto-23h → pas de popup possible, permission déjà accordée ou rien.
+async function dossierBackup(interactif){
+  if(!('showDirectoryPicker' in window))return null;
+  const h=await idbKV.get('backupDir').catch(()=>null);
+  if(!h)return null;
+  try{
+    let p=await h.queryPermission({mode:'readwrite'});
+    if(p==='prompt'&&interactif)p=await h.requestPermission({mode:'readwrite'});
+    return p==='granted'?h:null;
+  }catch(e){ return null; }
+}
+
+async function refreshBackupDirLabel(){
+  const lbl=document.getElementById('backupDirLabel');
+  if(!lbl)return;
+  const h=await idbKV.get('backupDir').catch(()=>null);
+  lbl.textContent=h?`📁 ${h.name}`:'Téléchargements (défaut)';
+}
+
+async function backupPC(interactif=true){
+  const nomFichier=`pharmacash_${today()}.json`;
+  const blob=buildBlob();
+  // 1er choix : écrire directement dans le dossier dédié
+  const dir=await dossierBackup(interactif);
+  if(dir){
+    try{
+      const fh=await dir.getFileHandle(nomFichier,{create:true});
+      const w=await fh.createWritable();
+      await w.write(blob); await w.close();
+      const ts=new Date().toLocaleString('fr-FR'); LS.s('lastBackupPC',ts);
+      updateBackupUI(); toast(`Sauvegarde → ${dir.name} ✓`);
+      return;
+    }catch(e){ console.warn('écriture dossier backup',e); /* → repli téléchargement */ }
+  }
+  // Repli : téléchargement classique — une sauvegarde ne doit JAMAIS échouer en silence
   const a=document.createElement('a');
-  a.href=URL.createObjectURL(buildBlob());
-  a.download=`pharmacash_${today()}.json`; a.click(); URL.revokeObjectURL(a.href);
+  a.href=URL.createObjectURL(blob);
+  a.download=nomFichier; a.click(); URL.revokeObjectURL(a.href);
   const ts=new Date().toLocaleString('fr-FR'); LS.s('lastBackupPC',ts);
-  updateBackupUI(); toast('Sauvegarde PC ✓');
+  updateBackupUI(); toast(dir===null?'Sauvegarde PC ✓ (Téléchargements)':'Dossier inaccessible — sauvegarde dans Téléchargements ✓');
 }
 async function backupDropbox(){
   if(!DROPBOX_TOKEN||DROPBOX_TOKEN.startsWith('COLLE')){toast('Token Dropbox non configuré','err');return;}
@@ -243,20 +314,21 @@ async function backupDropbox(){
     sync('ok','🔴 Temps réel'); updateBackupUI(); toast('Sauvegarde Dropbox ✓');
   }catch(e){sync('error','Erreur');toast('Dropbox: '+e.message,'err');}
 }
-async function backupNow(){ backupPC(); await backupDropbox(); }
+async function backupNow(interactif=true){ await backupPC(interactif); await backupDropbox(); }
 function updateBackupUI(){
   const lbPC=LS.g('lastBackupPC')||'—',lbDB=LS.g('lastBackupDB')||'—';
   el('lastBackupLabel',lbPC!=='—'?lbPC:lbDB!=='—'?lbDB:'Jamais');
   el('lastBackupPC',lbPC); el('lastBackupDB',lbDB);
   const nb=document.getElementById('nextBackup');
   if(nb){const d=new Date();d.setHours(AUTO_BACKUP_HOUR,0,0,0);if(d<new Date())d.setDate(d.getDate()+1);nb.textContent=d.toLocaleString('fr-FR');}
+  refreshBackupDirLabel();
 }
 function scheduleAutoBackup(){
   if(backupTimer)clearTimeout(backupTimer);
   const now=new Date(),next=new Date();
   next.setHours(AUTO_BACKUP_HOUR,0,0,0);
   if(next<=now)next.setDate(next.getDate()+1);
-  backupTimer=setTimeout(async()=>{await backupNow();scheduleAutoBackup();},next-now);
+  backupTimer=setTimeout(async()=>{await backupNow(false);scheduleAutoBackup();},next-now);
 }
 function importerDonnees(e){
   const file=e.target.files[0];if(!file)return;
