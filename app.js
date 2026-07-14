@@ -64,7 +64,14 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "837693602631",
   appId:             "1:837693602631:web:57a2f9e863e9b425ac2a62"
 };
-const DROPBOX_TOKEN = "REMPLACE_PAR_TON_TOKEN";
+// ── DROPBOX — sauvegarde cloud ────────────────────────
+// Les tokens directs Dropbox expirent en ~4h depuis 2021.
+// On utilise donc un REFRESH TOKEN permanent : l'app échange
+// automatiquement un jeton frais avant chaque envoi.
+// Remplis les 3 valeurs (guide fourni par Claude) :
+const DROPBOX_APP_KEY       = "COLLE_TA_APP_KEY";
+const DROPBOX_APP_SECRET    = "COLLE_TON_APP_SECRET";
+const DROPBOX_REFRESH_TOKEN = "COLLE_TON_REFRESH_TOKEN";
 const DROPBOX_FOLDER   = "/PharmaCash/sauvegardes";
 const AUTO_BACKUP_HOUR = 23;
 const PHARMACIE_NOM    = "Pharmacie Saint Raphaël de M'Bengué";
@@ -143,19 +150,76 @@ async function fbLoad(col){
   try{ const s=await getDocs(collection(db,col)); return s.docs.map(d=>({id:d.id,...d.data()})); }
   catch(e){ console.warn('fbLoad',col,e); return null; }
 }
+// ══════════════════════════════════════════════════════
+// [SECTION:FILE_ATTENTE] FILE D'ATTENTE HORS-LIGNE
+// Une écriture Firestore qui n'aboutit pas (réseau coupé, timeout)
+// n'est JAMAIS perdue en silence : elle est mise en file dans le
+// localStorage, survit à la fermeture de la page, et se rejoue seule
+// au retour du réseau. Le rejeu est sans risque : réécrire le même
+// document (même id) est idempotent, supprimer un doc absent aussi.
+// ══════════════════════════════════════════════════════
+const SYNC_TIMEOUT_MS=8000;
+let _rejeuEnCours=false;
+
+const _timeout=ms=>new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms));
+
+function _fileAttente(){ return LS.g('syncQueue')||[]; }
+function _enfiler(op,col,id,data){
+  const q=_fileAttente().filter(e=>!(e.col===col&&e.id===id)); // dernier ordre gagnant par document
+  q.push({op,col,id,data:data??null,ts:Date.now()});
+  LS.s('syncQueue',q);
+  majIndicateurSync();
+}
+function majIndicateurSync(){
+  const n=_fileAttente().length;
+  if(n)sync('error',`📤 ${n} en attente`);
+  else sync('ok','🔴 Temps réel');
+}
+
+async function _fbEcrire(op,col,id,data){
+  if(op==='set')await Promise.race([setDoc(doc(db,col,id),{...data,_ts:serverTimestamp()}),_timeout(SYNC_TIMEOUT_MS)]);
+  else await Promise.race([deleteDoc(doc(db,col,id)),_timeout(SYNC_TIMEOUT_MS)]);
+}
+
 async function fbSave(col,id,data){
   if(!useFirebase) return;
   const clean=JSON.parse(JSON.stringify(data));
   // BLINDAGE : aucun mot de passe ne doit JAMAIS être écrit dans Firestore,
   // quelle qu'en soit la source (login, restauration, cache périmé d'un poste).
   if(col==='users')delete clean.pass;
-  try{ await setDoc(doc(db,col,id),{...clean,_ts:serverTimestamp()}); }
-  catch(e){ console.warn('fbSave',e); }
+  try{ await _fbEcrire('set',col,id,clean); }
+  catch(e){ console.warn('fbSave → file d\'attente',col,id,e.message); _enfiler('set',col,id,clean); }
 }
 async function fbDel(col,id){
   if(!useFirebase) return;
-  try{ await deleteDoc(doc(db,col,id)); }catch(e){}
+  try{ await _fbEcrire('del',col,id); }
+  catch(e){ console.warn('fbDel → file d\'attente',col,id,e.message); _enfiler('del',col,id); }
 }
+
+async function rejouerFileAttente(){
+  if(!useFirebase||_rejeuEnCours)return;
+  let q=_fileAttente();
+  if(!q.length)return;
+  _rejeuEnCours=true;
+  sync('syncing',`📤 Envoi de ${q.length} en attente…`);
+  try{
+    while(q.length){
+      const e=q[0];
+      try{ await _fbEcrire(e.op,e.col,e.id,e.data); }
+      catch(err){ break; } // toujours pas de réseau — on réessaiera au prochain cycle
+      q=q.slice(1); LS.s('syncQueue',q);
+    }
+  }finally{
+    _rejeuEnCours=false;
+    majIndicateurSync();
+    if(!_fileAttente().length)toast('File d\'attente synchronisée ✓');
+  }
+}
+window.rejouerFileAttente=rejouerFileAttente;
+
+// Déclencheurs : retour du réseau + cycle de fond toutes les 45 s
+window.addEventListener('online',()=>rejouerFileAttente());
+setInterval(()=>{if(navigator.onLine)rejouerFileAttente();},45000);
 async function loadAll(){
   sync('syncing','Chargement…');
   const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc,fran]=await Promise.all([
@@ -206,7 +270,7 @@ function saveLocal(){
   LS.s('caissieresDB',caissieresDB);
   LS.s('vacationsDB',vacationsDB);
 }
-async function saveItem(col,item){ saveLocal(); if(useFirebase){sync('syncing','Sync…');await fbSave(col,item.id,item);sync('ok','🔴 Temps réel');} }
+async function saveItem(col,item){ saveLocal(); if(useFirebase){sync('syncing','Sync…');await fbSave(col,item.id,item);majIndicateurSync();} }
 async function delItem(col,id){ saveLocal(); if(useFirebase){await fbDel(col,id);} }
 
 // ══════════════════════════════════════════════════════
@@ -296,15 +360,42 @@ async function backupPC(interactif=true){
   const ts=new Date().toLocaleString('fr-FR'); LS.s('lastBackupPC',ts);
   updateBackupUI(); toast(dir===null?'Sauvegarde PC ✓ (Téléchargements)':'Dossier inaccessible — sauvegarde dans Téléchargements ✓');
 }
+// Jeton d'accès mis en cache en mémoire — renouvelé automatiquement avant expiration
+let _dbxToken=null,_dbxTokenExp=0;
+function dropboxConfigure(){
+  return DROPBOX_APP_KEY&&!DROPBOX_APP_KEY.startsWith('COLLE')
+      && DROPBOX_APP_SECRET&&!DROPBOX_APP_SECRET.startsWith('COLLE')
+      && DROPBOX_REFRESH_TOKEN&&!DROPBOX_REFRESH_TOKEN.startsWith('COLLE');
+}
+async function getDropboxAccessToken(){
+  if(_dbxToken&&Date.now()<_dbxTokenExp)return _dbxToken;
+  const resp=await fetch('https://api.dropbox.com/oauth2/token',{
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({
+      grant_type:'refresh_token',
+      refresh_token:DROPBOX_REFRESH_TOKEN,
+      client_id:DROPBOX_APP_KEY,
+      client_secret:DROPBOX_APP_SECRET
+    })
+  });
+  if(!resp.ok)throw new Error('Renouvellement token Dropbox refusé : '+await resp.text());
+  const j=await resp.json();
+  _dbxToken=j.access_token;
+  _dbxTokenExp=Date.now()+((j.expires_in||14400)-120)*1000; // marge de 2 min
+  return _dbxToken;
+}
+
 async function backupDropbox(){
-  if(!DROPBOX_TOKEN||DROPBOX_TOKEN.startsWith('COLLE')){toast('Token Dropbox non configuré','err');return;}
+  if(!dropboxConfigure()){toast('Dropbox non configuré — colle tes 3 clés dans app.js','err');return;}
   try{
     sync('syncing','Dropbox…');
+    const token=await getDropboxAccessToken();
     const ts=new Date().toTimeString().slice(0,5).replace(':','h');
     const path=`${DROPBOX_FOLDER}/pharmacash_${today()}_${ts}.json`;
     const resp=await fetch('https://content.dropboxapi.com/2/files/upload',{
       method:'POST',
-      headers:{'Authorization':`Bearer ${DROPBOX_TOKEN}`,
+      headers:{'Authorization':`Bearer ${token}`,
         'Dropbox-API-Arg':JSON.stringify({path,mode:'overwrite',autorename:false}),
         'Content-Type':'application/octet-stream'},
       body:buildBlob()
@@ -312,7 +403,7 @@ async function backupDropbox(){
     if(!resp.ok)throw new Error(await resp.text());
     const dts=new Date().toLocaleString('fr-FR'); LS.s('lastBackupDB',dts);
     sync('ok','🔴 Temps réel'); updateBackupUI(); toast('Sauvegarde Dropbox ✓');
-  }catch(e){sync('error','Erreur');toast('Dropbox: '+e.message,'err');}
+  }catch(e){sync('error','Erreur');toast('Dropbox: '+e.message,'err');console.warn('backupDropbox',e);}
 }
 async function backupNow(interactif=true){ await backupPC(interactif); await backupDropbox(); }
 function updateBackupUI(){
@@ -661,6 +752,7 @@ function startApp(){
   });
   document.getElementById('caisseDate').value=today();
   populateSelects(); updateBackupUI(); scheduleAutoBackup(); subscribeAll(); scheduleAutoRAN();
+  majIndicateurSync(); rejouerFileAttente();
   goTo('dashboard');
 }
 
