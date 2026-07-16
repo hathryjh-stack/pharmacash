@@ -2352,7 +2352,9 @@ function renderMvts(){
     ...transferts.map(t=>({...t,_src:'transfert'}))
   ].sort((a,b)=>b.date?.localeCompare(a.date||'')||0);
   let data=allMvts;
-  const dF=document.getElementById('fMDate').value,tF=document.getElementById('fMType').value;
+  // fMDate (jour exact) n'existe plus dans la page — sa lecture faisait planter
+  // tout le rendu du tableau (TypeError sur null). La plage Du→Au suffit.
+  const tF=document.getElementById('fMType')?.value;
   const rF=document.getElementById('fMRubrique')?.value;
   const sF=document.getElementById('fMSearch')?.value?.toLowerCase();
 
@@ -2393,7 +2395,7 @@ function renderMvts(){
     </tr>`;
   }).join('');
   // Sous-total si filtres actifs
-  const hasFilter=dF||cF||tF||rF||sF;
+  const hasFilter=dDebut2||dFin2||cF||tF||rF||sF;
   if(hasFilter){
     const totE=data.filter(m=>m.type==='entrée').reduce((s,m)=>s+(m.montant||0),0);
     const totS=data.filter(m=>m.type==='sortie').reduce((s,m)=>s+(m.montant||0),0);
@@ -2757,7 +2759,7 @@ function renderCaisseP(){
     return;
   }
   // Ligne de sous-total si filtres actifs
-  const hasFilter=dF||tF||rF||sF;
+  const hasFilter=dDebut||dFin||tF||rF||sF;
   const sousTotalHtml=hasFilter?`
     <tr style="background:var(--surface2);font-weight:700;font-size:.78rem">
       <td colspan="7" style="text-align:right;padding:6px 10px;color:var(--text2)">${nbFiltre} opération(s) filtrée(s)</td>
