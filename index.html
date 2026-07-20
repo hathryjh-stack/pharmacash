@@ -371,6 +371,10 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
         <div class="releve-preview" id="relevePreview"><div class="empty-state"><div class="ei">🖨️</div>Sélectionne le type de relevé et clique sur "Générer"</div></div>
       </div>
       <!-- REPORTS À NOUVEAUX (RAN) v4.2 -->
+      <div class="pg" id="pg-fournisseurs">
+        <!-- Rendu par renderFournisseurs() dans app.js -->
+      </div>
+
       <div class="pg" id="pg-creances">
         <!-- Rendu par renderCreances() dans app.js -->
       </div>
@@ -1107,6 +1111,190 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
     <div class="modal-ftr">
       <button class="btn btn-ghost" onclick="closeM('mReglementBordereau')">Annuler</button>
       <button class="btn btn-green" onclick="sauvegarderReglement()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══ MODAUX FOURNISSEURS ═══════════════════════════════════════════ -->
+
+<!-- Nouvelle facture fournisseur -->
+<div class="modal-ov" id="mNouvelleFactureFourn">
+  <div class="modal" style="max-width:580px">
+    <div class="modal-hdr">
+      <div class="modal-title">🏭 Nouvelle facture fournisseur</div>
+      <button class="close-x" onclick="closeM('mNouvelleFactureFourn')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg2">
+        <div class="fg">
+          <label>Fournisseur *</label>
+          <select id="ffFournisseur" class="fi"></select>
+        </div>
+        <div class="fg">
+          <label>Date facture *</label>
+          <input type="date" id="ffDate" class="fi">
+        </div>
+      </div>
+      <div class="fg2">
+        <div class="fg">
+          <label>Montant (FCFA) *</label>
+          <input type="number" id="ffMontant" class="fi" min="1" placeholder="0">
+        </div>
+        <div class="fg">
+          <label>Référence facture</label>
+          <input type="text" id="ffRef" class="fi" placeholder="N° facture fournisseur">
+        </div>
+      </div>
+      <div class="fg">
+        <label>Nature / Description</label>
+        <input type="text" id="ffNature" class="fi" placeholder="Approvisionnement médicaments, consommables...">
+      </div>
+      <!-- Paiement immédiat (quasi-comptant) -->
+      <div style="background:var(--surface2);border-radius:8px;padding:12px;margin-top:8px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.85rem">
+          <input type="checkbox" id="ffPaiementImmediat" onchange="togglePaiementImmediat()" style="width:16px;height:16px">
+          <span>Paiement immédiat (comptant à la livraison)</span>
+        </label>
+        <div id="blocPaiementImmediat" style="display:none;margin-top:10px">
+          <div class="fg2">
+            <div class="fg">
+              <label>Canal de paiement</label>
+              <select id="ffCanal" class="fi">
+                <option value="virement">🏦 Virement</option>
+                <option value="cheque">📝 Chèque</option>
+                <option value="wave">🔵 Wave</option>
+              </select>
+            </div>
+            <div class="fg">
+              <label>Compte débité</label>
+              <select id="ffCompte" class="fi"></select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="fg" style="margin-top:8px">
+        <label>Notes</label>
+        <textarea id="ffNotes" class="fi" rows="2" placeholder="Observations..."></textarea>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mNouvelleFactureFourn')">Annuler</button>
+      <button class="btn btn-green" onclick="sauvegarderFactureFourn()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Paiement d'une facture existante -->
+<div class="modal-ov" id="mPaiementFourn">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">💳 Payer une facture</div>
+      <button class="close-x" onclick="closeM('mPaiementFourn')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pfFactId">
+      <div class="fg2">
+        <div class="fg">
+          <label>Fournisseur</label>
+          <input type="text" id="pfFourn" class="fi" readonly style="opacity:.7">
+        </div>
+        <div class="fg">
+          <label>Référence</label>
+          <input type="text" id="pfRef" class="fi" readonly style="opacity:.7">
+        </div>
+      </div>
+      <div class="fg2">
+        <div class="fg">
+          <label>Montant à payer (FCFA) *</label>
+          <input type="number" id="pfMontant" class="fi" min="1">
+        </div>
+        <div class="fg">
+          <label>Date paiement *</label>
+          <input type="date" id="pfDate" class="fi">
+        </div>
+      </div>
+      <div class="fg2">
+        <div class="fg">
+          <label>Canal *</label>
+          <select id="pfCanal" class="fi">
+            <option value="virement">🏦 Virement</option>
+            <option value="cheque">📝 Chèque</option>
+            <option value="wave">🔵 Wave</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>Compte débité *</label>
+          <select id="pfCompte" class="fi"></select>
+        </div>
+      </div>
+      <div class="fg">
+        <label>Note</label>
+        <textarea id="pfNote" class="fi" rows="2" placeholder="N° chèque, référence virement..."></textarea>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mPaiementFourn')">Annuler</button>
+      <button class="btn btn-green" onclick="validerPaiementFourn()">Valider le paiement</button>
+    </div>
+  </div>
+</div>
+
+<!-- Historique paiements fournisseurs -->
+<div class="modal-ov" id="mHistoriqueFourn">
+  <div class="modal" style="max-width:900px">
+    <div class="modal-hdr">
+      <div class="modal-title">📋 Historique factures fournisseurs</div>
+      <button class="close-x" onclick="closeM('mHistoriqueFourn')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Fournisseur</th><th>Référence</th><th>Nature</th><th>Montant</th><th>Restant</th><th>Statut</th><th>Payé le</th></tr></thead>
+          <tbody id="histFournBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mHistoriqueFourn')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Gestion fournisseurs (liste + ajout) -->
+<div class="modal-ov" id="mGestionFournisseurs">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-hdr">
+      <div class="modal-title">⚙ Gestion des fournisseurs</div>
+      <button class="close-x" onclick="closeM('mGestionFournisseurs')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="listeFournisseurs" style="margin-bottom:16px"></div>
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div class="card-title" style="margin-bottom:10px">+ Ajouter un fournisseur</div>
+        <div class="fg2">
+          <div class="fg">
+            <label>Nom complet *</label>
+            <input type="text" id="nfNom" class="fi" placeholder="Ex: LABOREX CI">
+          </div>
+          <div class="fg">
+            <label>Sigle *</label>
+            <input type="text" id="nfSigle" class="fi" placeholder="Ex: LABOREX">
+          </div>
+        </div>
+        <div class="fg">
+          <label>Type</label>
+          <select id="nfType" class="fi">
+            <option value="grossiste">Grossiste répartiteur</option>
+            <option value="petit_fournisseur">Petit fournisseur</option>
+            <option value="autre">Autre</option>
+          </select>
+        </div>
+        <button class="btn btn-green" onclick="ajouterFournisseur()">Ajouter</button>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mGestionFournisseurs')">Fermer</button>
     </div>
   </div>
 </div>

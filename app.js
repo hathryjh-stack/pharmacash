@@ -39,6 +39,8 @@
 // │  [SECTION:CREANCES]     ⭐ MODULE CRÉANCES — tiers payants            │
 // │  [SECTION:CREANCE_UI]   Écran Créances (import XLS + saisie)         │
 // │  [SECTION:RECOUVREMENT] Module Recouvrement (bordereaux + lettrage)  │
+// │  [SECTION:FOURNISSEURS] ⭐ Module Fournisseurs (grossistes + factures) │
+// │  [SECTION:FOURN_UI]     Écran Fournisseurs (saisie + suivi)           │
 // │  [SECTION:CORRECTIONS]  Corrections massives (imputations)          │
 // │  [SECTION:INIT]         Initialisation de l'application              │
 // └─────────────────────────────────────────────────────────────────────┘
@@ -144,7 +146,9 @@ let caissieresDB = LS.g('caissieresDB') || []; // v4.3 — Caissières (base de 
 let vacationsDB = LS.g('vacationsDB') || []; // v4.3 — Plages horaires (vacations)
 let debiteurs  = LS.g('debiteurs')  || []; // v5.0 — Débiteurs tiers-payants
 let creances   = LS.g('creances')   || []; // v5.0 — Mouvements créances (vente/regl/rejet)
-let bordereaux = LS.g('bordereaux') || []; // v5.1 — Bordereaux de facturation mensuels
+let bordereaux     = LS.g('bordereaux')     || []; // v5.1 — Bordereaux de facturation mensuels
+let fournisseurs   = LS.g('fournisseurs')   || []; // v6.0 — Grossistes & petits fournisseurs
+let facturesFourn  = LS.g('facturesFourn')  || []; // v6.0 — Factures fournisseurs
 let currentUser = null;
 let backupTimer = null;
 
@@ -228,18 +232,19 @@ window.addEventListener('online',()=>rejouerFileAttente());
 setInterval(()=>{if(navigator.onLine)rejouerFileAttente();},45000);
 async function loadAll(){
   sync('syncing','Chargement…');
-  const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc,fran,fdeb,fcre,fbrd]=await Promise.all([
+  const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc,fran,fdeb,fcre,fbrd,ffou,fff]=await Promise.all([
     fbLoad('users'),fbLoad('pdvs'),fbLoad('comptes'),fbLoad('recettes'),
     fbLoad('versements'),fbLoad('mvts'),fbLoad('clotures'),fbLoad('transferts'),
     fbLoad('petiteCaisse'),fbLoad('rapportsNouveaux'),fbLoad('caissieresDB'),fbLoad('vacationsDB'),
     fbLoad('debiteurs'),fbLoad('creances'),
-    fbLoad('bordereaux')
+    fbLoad('bordereaux'),fbLoad('fournisseurs'),fbLoad('facturesFourn')
   ]);
   if(fu)users=fu; if(fp)pdvs=fp; if(fc)comptes=fc; if(fr)recettes=fr;
   if(fv)versements=fv; if(fm)mvts=fm; if(fcl)clotures=fcl; if(ft)transferts=ft;
   if(fpc)petiteCaisse=fpc; if(fran)rapportsNouveaux=fran;
   if(fdeb)debiteurs=fdeb; if(fcre)creances=fcre;
   if(fbrd)bordereaux=fbrd;
+  if(ffou)fournisseurs=ffou; if(fff)facturesFourn=fff;
   const fcaiss=await fbLoad('caissieresDB'); if(fcaiss)caissieresDB=fcaiss;
   const fvac=await fbLoad('vacationsDB'); if(fvac)vacationsDB=fvac;
   saveLocal(); sync('ok','🔴 Temps réel');
@@ -265,14 +270,16 @@ function subscribeAll(){
   sub('rapportsNouveaux',v=>{rapportsNouveaux=v;},()=>{ refreshPg('ran'); });
   sub('debiteurs',  v=>{debiteurs=v;},  ()=>{ refreshPg('creances'); });
   sub('creances',   v=>{creances=v;},   ()=>{ refreshPg('creances'); renderDashboard(); });
-  sub('bordereaux', v=>{bordereaux=v;}, ()=>{ refreshPg('creances'); });
+  sub('bordereaux',    v=>{bordereaux=v;},    ()=>{ refreshPg('creances'); });
+  sub('fournisseurs',  v=>{fournisseurs=v;},  ()=>{ refreshPg('fournisseurs'); });
+  sub('facturesFourn', v=>{facturesFourn=v;}, ()=>{ refreshPg('fournisseurs'); renderDashboard(); });
 }
 function refreshPg(name){
   const el=document.getElementById('pg-'+name);
   if(el&&el.classList.contains('active')){
     ({recettes:renderRecettes,versements:renderVersements,caisse:renderCaisse,banques:renderBanques,
       petitecaisse:renderPetiteCaisse,caisseprinc:renderCaisseP,utilisateurs:renderUsers,
-      caissiere:renderSuiviCaissiere,ran:renderRAN,creances:renderCreances})[name]?.();
+      caissiere:renderSuiviCaissiere,ran:renderRAN,creances:renderCreances,fournisseurs:renderFournisseurs})[name]?.();
   }
 }
 function saveLocal(){
@@ -285,6 +292,8 @@ function saveLocal(){
   LS.s('debiteurs',debiteurs);
   LS.s('creances',creances);
   LS.s('bordereaux',bordereaux);
+  LS.s('fournisseurs',fournisseurs);
+  LS.s('facturesFourn',facturesFourn);
 }
 async function saveItem(col,item){ saveLocal(); if(useFirebase){sync('syncing','Sync…');await fbSave(col,item.id,item);majIndicateurSync();} }
 async function delItem(col,id){ saveLocal(); if(useFirebase){await fbDel(col,id);} }
@@ -775,7 +784,7 @@ function startApp(){
 // ══════════════════════════════════════════════════════
 // [SECTION:NAV] NAVIGATION
 // ══════════════════════════════════════════════════════
-const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','caisseprinc','petitecaisse','caissiere','ran','creances','admin','utilisateurs'];
+const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','caisseprinc','petitecaisse','caissiere','ran','creances','fournisseurs','admin','utilisateurs'];
 function goTo(name){
   PAGES.forEach(p=>document.getElementById('pg-'+p)?.classList.remove('active'));
   document.getElementById('pg-'+name)?.classList.add('active');
@@ -788,14 +797,14 @@ function goTo(name){
       (name==='releves'&&t.includes('relevé'))||(name==='petitecaisse'&&t.includes('petite'))||
       (name==='caisseprinc'&&t.includes('principale'))||
       (name==='caissiere'&&t.includes('caissière'))||(name==='ran'&&t.includes('nouveaux'))||(name==='admin'&&t.includes('config'))||
-      (name==='utilisateurs'&&t.includes('utilis'))||(name==='creances'&&t.includes('créance')));
+      (name==='utilisateurs'&&t.includes('utilis'))||(name==='creances'&&t.includes('créance'))||(name==='fournisseurs'&&t.includes('fourn')));
   });
   const mm=['dashboard','recettes','versements','caisse','banques'];
   document.querySelectorAll('.mnav-item').forEach((n,i)=>n.classList.toggle('active',mm[i]===name));
   ({dashboard:renderDashboard,recettes:renderRecettes,versements:renderVersements,
     caisse:renderCaisse,banques:renderBanques,rapport:renderRapport,
     releves:renderReleves,petitecaisse:renderPetiteCaisse,caisseprinc:renderCaisseP,
-    caissiere:renderSuiviCaissiere,ran:renderRAN,creances:renderCreances,admin:renderAdmin,utilisateurs:renderUsers})[name]?.();
+    caissiere:renderSuiviCaissiere,ran:renderRAN,creances:renderCreances,fournisseurs:renderFournisseurs,admin:renderAdmin,utilisateurs:renderUsers})[name]?.();
 }
 window.goTo=goTo;
 
@@ -3039,6 +3048,9 @@ function renderRapport(){
   const fluxCre = CreanceModule.fluxGlobal(debut, fin);
   const totCredit = fluxCre.ventes;
   const totReglCreances = fluxCre.reglements;
+  // Dettes fournisseurs (snapshot instantané, pas filtré par période)
+  const totDettesFourn = totalDettesFournisseurs();
+  const fluxFourn = fluxPaiementsFourn(debut, fin);
 
   document.getElementById('rapportContent').innerHTML=`
     <div style="font-size:.75rem;color:var(--cyan);font-weight:700;margin-bottom:10px">${vueLabel}</div>
@@ -3050,6 +3062,8 @@ function renderRapport(){
       <div class="stat-card amber"><div class="stat-lbl">En attente</div><div class="stat-val amber">${fmt(totA)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card ${ecart>=0?'green':'red'}"><div class="stat-lbl">Écart CA/Versé</div><div class="stat-val ${ecart>=0?'green':'red'}">${ecart>=0?'+':''}${fmt(ecart)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card amber"><div class="stat-lbl">💳 CA Crédit (tiers)</div><div class="stat-val amber">${fmt(totCredit)}</div><div class="stat-sub">${DEVISE} — ventes à crédit période</div></div>
+      <div class="stat-card red"><div class="stat-lbl">🏭 Dettes fournisseurs</div><div class="stat-val red">${fmt(totDettesFourn)}</div><div class="stat-sub">${DEVISE} — factures en attente</div></div>
+      <div class="stat-card green"><div class="stat-lbl">🏭 Payé fournisseurs</div><div class="stat-val green">${fmt(fluxFourn.payes)}</div><div class="stat-sub">${DEVISE} — période</div></div>
       <div class="stat-card green"><div class="stat-lbl">✓ Disponible banques</div><div class="stat-val green">${fmt(totalDispo())}</div><div class="stat-sub">${DEVISE} — global</div></div>
       <div class="stat-card amber"><div class="stat-lbl">⏳ En transit MM</div><div class="stat-val amber">${fmt(totalTransit())}</div><div class="stat-sub">${DEVISE}</div></div>
     </div>
@@ -6354,6 +6368,457 @@ function statsRecouvrement() {
   const montantTransit = chequesTransit.reduce((s,c) => s + c.montant, 0);
   return { enCours: enCours.length, montantEnCours, montantTransit };
 }
+
+// ══════════════════════════════════════════════════════
+// [SECTION:FOURNISSEURS] MODULE FOURNISSEURS v6.0
+// Grossistes répartiteurs + petits fournisseurs
+// Principe : chaque facture fournisseur est un document indépendant
+// avec son statut de paiement (en_attente → payé)
+// ══════════════════════════════════════════════════════
+
+// ── 4 grossistes pré-configurés ─────────────────────────────────────
+const DEF_FOURNISSEURS = [
+  { id:'fou01', nom:'UBIPHARM CI',      sigle:'UBIPHARM', type:'grossiste', actif:true,
+    canaux:['virement','cheque','wave'], delaiJours:0, notes:'' },
+  { id:'fou02', nom:'COPHARMED',        sigle:'COPHARMED', type:'grossiste', actif:true,
+    canaux:['virement','cheque','wave'], delaiJours:0, notes:'' },
+  { id:'fou03', nom:'DPCI',             sigle:'DPCI',      type:'grossiste', actif:true,
+    canaux:['virement','cheque','wave'], delaiJours:0, notes:'' },
+  { id:'fou04', nom:'TEDIS PHARMA CI',  sigle:'TEDIS',     type:'grossiste', actif:true,
+    canaux:['virement','cheque','wave'], delaiJours:0, notes:'' },
+];
+
+// ── Initialise les fournisseurs si collection vide ───────────────────
+async function initFournisseursDefaut() {
+  if (fournisseurs.length > 0) return;
+  for (const f of DEF_FOURNISSEURS) {
+    fournisseurs.push(f);
+    await saveItem('fournisseurs', f);
+  }
+  toast('4 grossistes initialisés ✓', 'success');
+  renderFournisseurs();
+}
+window.initFournisseursDefaut = initFournisseursDefaut;
+
+// ── Calculs fournisseurs ─────────────────────────────────────────────
+// Encours fournisseur = Σ factures non payées
+function encoursFournisseur(fournisseurId) {
+  return facturesFourn
+    .filter(f => f.fournisseurId === fournisseurId && f.statut !== 'paye' && f.statut !== 'avoir')
+    .reduce((s, f) => s + (f.montantRestant ?? f.montant ?? 0), 0);
+}
+
+// Total dettes fournisseurs (toutes)
+function totalDettesFournisseurs() {
+  return facturesFourn
+    .filter(f => f.statut !== 'paye' && f.statut !== 'avoir')
+    .reduce((s, f) => s + (f.montantRestant ?? f.montant ?? 0), 0);
+}
+
+// Flux paiements sur une période
+function fluxPaiementsFourn(debut, fin) {
+  let payes = 0, enAttente = 0;
+  for (const f of facturesFourn) {
+    if (debut && f.dateFacture < debut) continue;
+    if (fin   && f.dateFacture > fin)   continue;
+    if (f.statut === 'paye') payes += f.montant ?? 0;
+    else enAttente += f.montantRestant ?? f.montant ?? 0;
+  }
+  return { payes, enAttente };
+}
+
+// ══════════════════════════════════════════════════════
+// [SECTION:FOURN_UI] ÉCRAN FOURNISSEURS
+// ══════════════════════════════════════════════════════
+
+function renderFournisseurs() {
+  const el = document.getElementById('pg-fournisseurs');
+  if (!el) return;
+
+  const t = today();
+  const debutMois = t.slice(0,7) + '-01';
+  const fluxM = fluxPaiementsFourn(debutMois, t);
+  const totalDettes = totalDettesFournisseurs();
+
+  // Factures en attente triées par date
+  const enAttente = facturesFourn
+    .filter(f => f.statut !== 'paye' && f.statut !== 'avoir')
+    .sort((a,b) => a.dateFacture.localeCompare(b.dateFacture));
+
+  el.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">🏭 Fournisseurs & Règlements</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-sm btn-green" onclick="ouvrirNouvelleFactureFourn()">+ Nouvelle facture</button>
+        <button class="btn btn-sm btn-secondary" onclick="ouvrirGestionFournisseurs()">⚙ Gérer les fournisseurs</button>
+        <button class="btn btn-sm btn-secondary" onclick="ouvrirHistoriqueFourn()">📋 Historique paiements</button>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="stats-grid" style="margin-bottom:14px">
+      <div class="stat-card red">
+        <div class="stat-lbl">🏭 Dettes fournisseurs</div>
+        <div class="stat-val red">${fmt(totalDettes)}</div>
+        <div class="stat-sub">${DEVISE} — factures en attente</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-lbl">✅ Payé (mois)</div>
+        <div class="stat-val green">${fmt(fluxM.payes)}</div>
+        <div class="stat-sub">${DEVISE}</div>
+      </div>
+      <div class="stat-card amber">
+        <div class="stat-lbl">⏳ En attente (mois)</div>
+        <div class="stat-val amber">${fmt(fluxM.enAttente)}</div>
+        <div class="stat-sub">${DEVISE}</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-lbl">🏭 Grossistes actifs</div>
+        <div class="stat-val blue">${fournisseurs.filter(f=>f.actif!==false).length}</div>
+        <div class="stat-sub">fournisseurs configurés</div>
+      </div>
+    </div>
+
+    <!-- Encours par fournisseur -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:8px">Encours par fournisseur</div>
+      ${fournisseurs.length === 0 ? `
+        <div style="color:var(--text3);padding:20px;text-align:center">
+          Aucun fournisseur configuré.<br>
+          <button class="btn btn-sm" style="margin-top:10px" onclick="initFournisseursDefaut()">
+            Initialiser les 4 grossistes
+          </button>
+        </div>` : `
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Fournisseur</th><th>Type</th><th>Encours</th><th>Factures ouvertes</th><th></th></tr></thead>
+          <tbody>
+            ${fournisseurs.filter(f=>f.actif!==false).map(f => {
+              const enc = encoursFournisseur(f.id);
+              const nbFact = facturesFourn.filter(ff => ff.fournisseurId===f.id && ff.statut!=='paye').length;
+              return `<tr>
+                <td><b>${f.sigle}</b><div style="font-size:.7rem;color:var(--text3)">${f.nom}</div></td>
+                <td><span class="badge ${f.type==='grossiste'?'bg':'bb'}">${f.type}</span></td>
+                <td class="amt ${enc>0?'red':'pos'}">${enc>0?fmt(enc):'—'}</td>
+                <td style="font-size:.8rem">${nbFact>0?`<span style="color:var(--amber)">${nbFact} facture(s)</span>`:'—'}</td>
+                <td>
+                  <button class="btn btn-sm btn-secondary" onclick="ouvrirNouvelleFactureFourn('${f.id}')">+ Facture</button>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table></div>`}
+    </div>
+
+    <!-- Factures en attente de paiement -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">
+        ⏳ Factures en attente
+        ${enAttente.length > 0 ? `<span style="font-size:.75rem;color:var(--amber);margin-left:8px">${enAttente.length} facture(s) — ${fmt(totalDettes)} FCFA</span>` : ''}
+      </div>
+      ${enAttente.length === 0 ? '<div style="color:var(--text3);padding:12px">Aucune facture en attente</div>' : `
+        <div class="tbl-wrap"><table>
+          <thead><tr>
+            <th>Fournisseur</th><th>Date facture</th><th>Référence</th>
+            <th>Montant</th><th>Restant</th><th>Statut</th><th>Actions</th>
+          </tr></thead>
+          <tbody>
+            ${enAttente.map(f => {
+              const fou = fournisseurs.find(ff=>ff.id===f.fournisseurId);
+              const restant = f.montantRestant ?? f.montant;
+              const statutBadge = f.statut==='en_attente'
+                ? '<span class="badge amber">En attente</span>'
+                : f.statut==='partiel'
+                  ? '<span class="badge purple">Partiel</span>'
+                  : '<span class="badge red">Échu</span>';
+              return `<tr>
+                <td><b>${fou?.sigle||f.fournisseurId}</b></td>
+                <td style="font-size:.78rem">${fmtD(f.dateFacture)}</td>
+                <td style="font-size:.78rem">${f.reference||'—'}</td>
+                <td class="amt">${fmt(f.montant)}</td>
+                <td class="amt red">${fmt(restant)}</td>
+                <td>${statutBadge}</td>
+                <td>
+                  <div style="display:flex;gap:4px">
+                    <button class="btn btn-sm btn-green" onclick="ouvrirPaiementFactureFourn('${f.id}')">💳 Payer</button>
+                    <button class="btn btn-sm btn-secondary" onclick="supprimerFactureFourn('${f.id}')">✕</button>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table></div>`}
+    </div>
+  `;
+}
+window.renderFournisseurs = renderFournisseurs;
+
+// ── Créer une nouvelle facture fournisseur ───────────────────────────
+function ouvrirNouvelleFactureFourn(fournisseurId = '') {
+  const sel = document.getElementById('ffFournisseur');
+  if (sel) {
+    sel.innerHTML = fournisseurs.filter(f => f.actif!==false)
+      .map(f => `<option value="${f.id}" ${f.id===fournisseurId?'selected':''}>${f.nom}</option>`)
+      .join('');
+  }
+  document.getElementById('ffDate').value      = today();
+  document.getElementById('ffMontant').value   = '';
+  document.getElementById('ffRef').value       = '';
+  document.getElementById('ffNature').value    = '';
+  document.getElementById('ffNotes').value     = '';
+  document.getElementById('ffCanal').value     = 'virement';
+  openM('mNouvelleFactureFourn');
+}
+window.ouvrirNouvelleFactureFourn = ouvrirNouvelleFactureFourn;
+
+async function sauvegarderFactureFourn() {
+  const fournisseurId = document.getElementById('ffFournisseur')?.value;
+  const dateFacture   = document.getElementById('ffDate')?.value;
+  const montant       = parseFloat(document.getElementById('ffMontant')?.value || '0');
+  const reference     = document.getElementById('ffRef')?.value?.trim() || '';
+  const nature        = document.getElementById('ffNature')?.value?.trim() || '';
+  const notes         = document.getElementById('ffNotes')?.value?.trim() || '';
+  const paiementImmediat = document.getElementById('ffPaiementImmediat')?.checked;
+  const canal         = document.getElementById('ffCanal')?.value || 'virement';
+  const compteId      = document.getElementById('ffCompte')?.value || '';
+
+  if (!fournisseurId) { toast('Sélectionne un fournisseur', 'warn'); return; }
+  if (!dateFacture)   { toast('Date obligatoire', 'warn'); return; }
+  if (montant <= 0)   { toast('Montant invalide', 'warn'); return; }
+
+  const fou = fournisseurs.find(f => f.id === fournisseurId);
+  const fact = {
+    id:            'ff_' + uid(),
+    fournisseurId,
+    fournisseurNom: fou?.nom || fournisseurId,
+    dateFacture,
+    ts:            Date.now(),
+    montant,
+    montantRestant: paiementImmediat ? 0 : montant,
+    reference,
+    nature:        nature || 'Approvisionnement médicaments',
+    statut:        paiementImmediat ? 'paye' : 'en_attente',
+    datePaiement:  paiementImmediat ? dateFacture : '',
+    canal:         paiementImmediat ? canal : '',
+    compteId:      paiementImmediat ? compteId : '',
+    notes,
+    creePar:       currentUser?.nom || ''
+  };
+
+  facturesFourn.push(fact);
+  await saveItem('facturesFourn', fact);
+
+  // Si paiement immédiat — écriture sortie dans mvts bancaires
+  if (paiementImmediat && compteId) {
+    await _debiterCompteBanque(compteId, montant, dateFacture,
+      reference, `Paiement ${fou?.nom||fournisseurId} — ${reference||nature}`);
+  }
+
+  saveLocal();
+  closeM('mNouvelleFactureFourn');
+  toast(`Facture ${reference||fact.id} enregistrée ✓`, 'success');
+  renderFournisseurs();
+  renderDashboard();
+}
+window.sauvegarderFactureFourn = sauvegarderFactureFourn;
+
+// ── Payer une facture existante ──────────────────────────────────────
+function ouvrirPaiementFactureFourn(factId) {
+  const fact = facturesFourn.find(f => f.id === factId);
+  if (!fact) return;
+  document.getElementById('pfFactId').value    = factId;
+  document.getElementById('pfFourn').value     = fact.fournisseurNom;
+  document.getElementById('pfRef').value       = fact.reference || '';
+  document.getElementById('pfMontant').value   = fact.montantRestant ?? fact.montant;
+  document.getElementById('pfDate').value      = today();
+  document.getElementById('pfCanal').value     = 'virement';
+  document.getElementById('pfNote').value      = '';
+  document.getElementById('pfCompte').innerHTML = comptes
+    .filter(c => c.cat==='banque' || c.cat==='mobile_money' || c.cat==='caisse')
+    .map(c => `<option value="${c.id}">${c.nom}</option>`)
+    .join('');
+  openM('mPaiementFourn');
+}
+window.ouvrirPaiementFactureFourn = ouvrirPaiementFactureFourn;
+
+async function validerPaiementFourn() {
+  const factId   = document.getElementById('pfFactId')?.value;
+  const montant  = parseFloat(document.getElementById('pfMontant')?.value || '0');
+  const date     = document.getElementById('pfDate')?.value;
+  const canal    = document.getElementById('pfCanal')?.value;
+  const compteId = document.getElementById('pfCompte')?.value;
+  const note     = document.getElementById('pfNote')?.value?.trim() || '';
+
+  if (montant <= 0) { toast('Montant invalide', 'warn'); return; }
+  if (!date)        { toast('Date obligatoire', 'warn'); return; }
+  if (!compteId)    { toast('Sélectionne le compte débiteur', 'warn'); return; }
+
+  const fact = facturesFourn.find(f => f.id === factId);
+  if (!fact) { toast('Facture introuvable', 'error'); return; }
+
+  const restantAvant = fact.montantRestant ?? fact.montant;
+  const nouveauRestant = Math.max(0, restantAvant - montant);
+
+  fact.montantRestant = nouveauRestant;
+  fact.statut         = nouveauRestant <= 0 ? 'paye' : 'partiel';
+  fact.datePaiement   = nouveauRestant <= 0 ? date : fact.datePaiement;
+  fact.canal          = canal;
+  fact.compteId       = compteId;
+  await saveItem('facturesFourn', fact);
+
+  // Écriture sortie dans mvts bancaires
+  await _debiterCompteBanque(compteId, montant, date, fact.reference,
+    `Paiement ${fact.fournisseurNom} — ${fact.reference||fact.id}${note?' — '+note:''}`);
+
+  saveLocal();
+  closeM('mPaiementFourn');
+  const msg = nouveauRestant <= 0 ? 'Facture soldée ✓' : `Paiement partiel — restant ${fmt(nouveauRestant)} FCFA`;
+  toast(msg, 'success');
+  renderFournisseurs();
+  renderDashboard();
+}
+window.validerPaiementFourn = validerPaiementFourn;
+
+// ── Helper : débiter un compte (sortie dans mvts) ────────────────────
+async function _debiterCompteBanque(compteId, montant, date, ref, libelle) {
+  const cpt = comptes.find(c => c.id === compteId);
+  if (!cpt) return;
+  const mvtSortie = {
+    id:       'mvt_' + uid(),
+    date,
+    ts:       Date.now(),
+    compte:   compteId,
+    type:     'sortie',
+    rubrique: 'Paiement fournisseur',
+    montant,
+    libelle,
+    ref:      ref || '',
+    saisie:   currentUser?.nom || '',
+    src:      'fournisseur'
+  };
+  mvts.push(mvtSortie);
+  await saveItem('mvts', mvtSortie);
+  cpt.solde = (cpt.solde || 0) - montant;
+  await saveItem('comptes', cpt);
+}
+
+// ── Supprimer une facture (soft) ─────────────────────────────────────
+async function supprimerFactureFourn(factId) {
+  if (!confirm('Supprimer cette facture ?')) return;
+  facturesFourn = facturesFourn.filter(f => f.id !== factId);
+  await delItem('facturesFourn', factId);
+  saveLocal();
+  toast('Facture supprimée', 'info');
+  renderFournisseurs();
+}
+window.supprimerFactureFourn = supprimerFactureFourn;
+
+// ── Historique complet des paiements fournisseurs ────────────────────
+function ouvrirHistoriqueFourn() {
+  const sorted = [...facturesFourn].sort((a,b) => b.dateFacture.localeCompare(a.dateFacture));
+  const el = document.getElementById('histFournBody');
+  if (!el) return;
+  const statutBadge = s => ({
+    en_attente: '<span class="badge amber">En attente</span>',
+    partiel:    '<span class="badge purple">Partiel</span>',
+    paye:       '<span class="badge green">Payé ✓</span>',
+    avoir:      '<span class="badge blue">Avoir</span>'
+  }[s] || `<span class="badge">${s}</span>`);
+
+  el.innerHTML = sorted.slice(0,200).map(f => {
+    const fou = fournisseurs.find(ff=>ff.id===f.fournisseurId);
+    return `<tr>
+      <td>${fmtD(f.dateFacture)}</td>
+      <td><b>${fou?.sigle||f.fournisseurId}</b></td>
+      <td style="font-size:.75rem">${f.reference||'—'}</td>
+      <td style="font-size:.75rem">${f.nature||'—'}</td>
+      <td class="amt">${fmt(f.montant)}</td>
+      <td class="amt ${f.montantRestant>0?'red':'pos'}">${fmt(f.montantRestant??0)}</td>
+      <td>${statutBadge(f.statut)}</td>
+      <td style="font-size:.75rem">${fmtD(f.datePaiement)||'—'}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text3)">Aucune facture</td></tr>';
+  openM('mHistoriqueFourn');
+}
+window.ouvrirHistoriqueFourn = ouvrirHistoriqueFourn;
+
+// ── Gestion fournisseurs (ajout fournisseur à la volée) ──────────────
+function ouvrirGestionFournisseurs() {
+  const el = document.getElementById('listeFournisseurs');
+  if (el) {
+    el.innerHTML = fournisseurs.length === 0
+      ? '<div style="color:var(--text3)">Aucun fournisseur. <button class="btn btn-sm" onclick="initFournisseursDefaut()">Initialiser les 4 grossistes</button></div>'
+      : fournisseurs.map(f => `
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+            <div>
+              <b>${f.nom}</b>
+              <span class="badge ${f.type==='grossiste'?'bg':'bb'}" style="margin-left:6px">${f.type}</span>
+              ${f.actif===false ? '<span class="badge red" style="margin-left:4px">Inactif</span>' : ''}
+            </div>
+            <button class="btn btn-sm btn-secondary" onclick="toggleActifFourn('${f.id}')">
+              ${f.actif===false ? 'Activer' : 'Désactiver'}
+            </button>
+          </div>`).join('');
+  }
+  // Vider le formulaire d'ajout
+  document.getElementById('nfNom').value   = '';
+  document.getElementById('nfSigle').value = '';
+  document.getElementById('nfType').value  = 'grossiste';
+  openM('mGestionFournisseurs');
+}
+window.ouvrirGestionFournisseurs = ouvrirGestionFournisseurs;
+
+async function ajouterFournisseur() {
+  const nom   = document.getElementById('nfNom')?.value?.trim();
+  const sigle = document.getElementById('nfSigle')?.value?.trim().toUpperCase();
+  const type  = document.getElementById('nfType')?.value || 'grossiste';
+  if (!nom)   { toast('Nom obligatoire', 'warn'); return; }
+  if (!sigle) { toast('Sigle obligatoire', 'warn'); return; }
+  const newF = {
+    id:         'fou_' + uid(),
+    nom, sigle, type,
+    actif:      true,
+    canaux:     ['virement','cheque','wave'],
+    delaiJours: 0,
+    ts:         Date.now(),
+    creePar:    currentUser?.nom || ''
+  };
+  fournisseurs.push(newF);
+  await saveItem('fournisseurs', newF);
+  saveLocal();
+  toast(`${nom} ajouté ✓`, 'success');
+  ouvrirGestionFournisseurs(); // rafraîchit la liste dans le modal
+  renderFournisseurs();
+}
+window.ajouterFournisseur = ajouterFournisseur;
+
+// ── Toggle bloc paiement immédiat dans modal nouvelle facture ────────
+function togglePaiementImmediat() {
+  const checked = document.getElementById('ffPaiementImmediat')?.checked;
+  const bloc = document.getElementById('blocPaiementImmediat');
+  if (bloc) bloc.style.display = checked ? 'block' : 'none';
+  if (checked) {
+    // Peupler le select comptes
+    const sel = document.getElementById('ffCompte');
+    if (sel) {
+      sel.innerHTML = comptes
+        .filter(c => c.cat === 'banque' || c.cat === 'mobile_money' || c.cat === 'caisse')
+        .map(c => `<option value="${c.id}">${c.nom}</option>`)
+        .join('');
+    }
+  }
+}
+window.togglePaiementImmediat = togglePaiementImmediat;
+
+async function toggleActifFourn(fouId) {
+  const f = fournisseurs.find(ff => ff.id === fouId);
+  if (!f) return;
+  f.actif = !f.actif;
+  await saveItem('fournisseurs', f);
+  saveLocal();
+  ouvrirGestionFournisseurs();
+  renderFournisseurs();
+}
+window.toggleActifFourn = toggleActifFourn;
 
 // ══════════════════════════════════════════════════════
 // [SECTION:CORRECTIONS] CORRECTION MASSIVE — Réimputation clôtures tête de pont
