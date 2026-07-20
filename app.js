@@ -5811,7 +5811,7 @@ function _rafraichirPrevImport() {
 
   const tousReconnus = parsed.lignes.every(l => matcherDebiteur(l.client));
   html += `<button class="btn" style="margin-top:12px${!tousReconnus ? ';opacity:.5' : ''}"
-    ${!tousReconnus ? 'title="Résoudre d'abord les non reconnus"' : ''}
+    ${!tousReconnus ? 'title="Résoudre les non reconnus d\'abord"' : ''}
     onclick="validerImportCreances()">✅ Valider l'import</button>`;
   if (!tousReconnus) {
     html += `<button class="btn btn-secondary" style="margin-top:12px;margin-left:8px"
