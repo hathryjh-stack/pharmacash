@@ -788,14 +788,14 @@ function goTo(name){
       (name==='releves'&&t.includes('relevé'))||(name==='petitecaisse'&&t.includes('petite'))||
       (name==='caisseprinc'&&t.includes('principale'))||
       (name==='caissiere'&&t.includes('caissière'))||(name==='ran'&&t.includes('nouveaux'))||(name==='admin'&&t.includes('config'))||
-      (name==='utilisateurs'&&t.includes('utilis')));
+      (name==='utilisateurs'&&t.includes('utilis'))||(name==='creances'&&t.includes('créance')));
   });
   const mm=['dashboard','recettes','versements','caisse','banques'];
   document.querySelectorAll('.mnav-item').forEach((n,i)=>n.classList.toggle('active',mm[i]===name));
   ({dashboard:renderDashboard,recettes:renderRecettes,versements:renderVersements,
     caisse:renderCaisse,banques:renderBanques,rapport:renderRapport,
     releves:renderReleves,petitecaisse:renderPetiteCaisse,caisseprinc:renderCaisseP,
-    caissiere:renderSuiviCaissiere,ran:renderRAN,admin:renderAdmin,utilisateurs:renderUsers})[name]?.();
+    caissiere:renderSuiviCaissiere,ran:renderRAN,creances:renderCreances,admin:renderAdmin,utilisateurs:renderUsers})[name]?.();
 }
 window.goTo=goTo;
 
