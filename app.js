@@ -36,6 +36,9 @@
 // │  [SECTION:RAN]          Reports à Nouveaux                           │
 // │  [SECTION:IMPORT_XLS]   Import Excel de démarrage                    │
 // │  [SECTION:PRINT_DASH]   Impression tableau de bord                   │
+// │  [SECTION:CREANCES]     ⭐ MODULE CRÉANCES — tiers payants            │
+// │  [SECTION:CREANCE_UI]   Écran Créances (import XLS + saisie)         │
+// │  [SECTION:RECOUVREMENT] Module Recouvrement (bordereaux + lettrage)  │
 // │  [SECTION:CORRECTIONS]  Corrections massives (imputations)          │
 // │  [SECTION:INIT]         Initialisation de l'application              │
 // └─────────────────────────────────────────────────────────────────────┘
@@ -139,6 +142,9 @@ let petiteCaisse = LS.g('petiteCaisse') || []; // NEW v4.1 — petite caisse
 let rapportsNouveaux = LS.g('rapportsNouveaux') || []; // v4.2 — Reports à Nouveaux (RAN)
 let caissieresDB = LS.g('caissieresDB') || []; // v4.3 — Caissières (base de données)
 let vacationsDB = LS.g('vacationsDB') || []; // v4.3 — Plages horaires (vacations)
+let debiteurs  = LS.g('debiteurs')  || []; // v5.0 — Débiteurs tiers-payants
+let creances   = LS.g('creances')   || []; // v5.0 — Mouvements créances (vente/regl/rejet)
+let bordereaux = LS.g('bordereaux') || []; // v5.1 — Bordereaux de facturation mensuels
 let currentUser = null;
 let backupTimer = null;
 
@@ -222,14 +228,18 @@ window.addEventListener('online',()=>rejouerFileAttente());
 setInterval(()=>{if(navigator.onLine)rejouerFileAttente();},45000);
 async function loadAll(){
   sync('syncing','Chargement…');
-  const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc,fran]=await Promise.all([
+  const [fu,fp,fc,fr,fv,fm,fcl,ft,fpc,fran,fdeb,fcre,fbrd]=await Promise.all([
     fbLoad('users'),fbLoad('pdvs'),fbLoad('comptes'),fbLoad('recettes'),
     fbLoad('versements'),fbLoad('mvts'),fbLoad('clotures'),fbLoad('transferts'),
-    fbLoad('petiteCaisse'),fbLoad('rapportsNouveaux'),fbLoad('caissieresDB'),fbLoad('vacationsDB')
+    fbLoad('petiteCaisse'),fbLoad('rapportsNouveaux'),fbLoad('caissieresDB'),fbLoad('vacationsDB'),
+    fbLoad('debiteurs'),fbLoad('creances'),
+    fbLoad('bordereaux')
   ]);
   if(fu)users=fu; if(fp)pdvs=fp; if(fc)comptes=fc; if(fr)recettes=fr;
   if(fv)versements=fv; if(fm)mvts=fm; if(fcl)clotures=fcl; if(ft)transferts=ft;
   if(fpc)petiteCaisse=fpc; if(fran)rapportsNouveaux=fran;
+  if(fdeb)debiteurs=fdeb; if(fcre)creances=fcre;
+  if(fbrd)bordereaux=fbrd;
   const fcaiss=await fbLoad('caissieresDB'); if(fcaiss)caissieresDB=fcaiss;
   const fvac=await fbLoad('vacationsDB'); if(fvac)vacationsDB=fvac;
   saveLocal(); sync('ok','🔴 Temps réel');
@@ -253,13 +263,16 @@ function subscribeAll(){
   sub('caissieresDB',v=>{caissieresDB=v;},()=>{ refreshPg('caissiere'); });
   sub('vacationsDB', v=>{vacationsDB=v;}, ()=>{ refreshPg('caissiere'); });
   sub('rapportsNouveaux',v=>{rapportsNouveaux=v;},()=>{ refreshPg('ran'); });
+  sub('debiteurs',  v=>{debiteurs=v;},  ()=>{ refreshPg('creances'); });
+  sub('creances',   v=>{creances=v;},   ()=>{ refreshPg('creances'); renderDashboard(); });
+  sub('bordereaux', v=>{bordereaux=v;}, ()=>{ refreshPg('creances'); });
 }
 function refreshPg(name){
   const el=document.getElementById('pg-'+name);
   if(el&&el.classList.contains('active')){
     ({recettes:renderRecettes,versements:renderVersements,caisse:renderCaisse,banques:renderBanques,
       petitecaisse:renderPetiteCaisse,caisseprinc:renderCaisseP,utilisateurs:renderUsers,
-      caissiere:renderSuiviCaissiere,ran:renderRAN})[name]?.();
+      caissiere:renderSuiviCaissiere,ran:renderRAN,creances:renderCreances})[name]?.();
   }
 }
 function saveLocal(){
@@ -269,6 +282,9 @@ function saveLocal(){
   LS.s('rapportsNouveaux',rapportsNouveaux);
   LS.s('caissieresDB',caissieresDB);
   LS.s('vacationsDB',vacationsDB);
+  LS.s('debiteurs',debiteurs);
+  LS.s('creances',creances);
+  LS.s('bordereaux',bordereaux);
 }
 async function saveItem(col,item){ saveLocal(); if(useFirebase){sync('syncing','Sync…');await fbSave(col,item.id,item);majIndicateurSync();} }
 async function delItem(col,id){ saveLocal(); if(useFirebase){await fbDel(col,id);} }
@@ -759,7 +775,7 @@ function startApp(){
 // ══════════════════════════════════════════════════════
 // [SECTION:NAV] NAVIGATION
 // ══════════════════════════════════════════════════════
-const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','caisseprinc','petitecaisse','caissiere','ran','admin','utilisateurs'];
+const PAGES=['dashboard','recettes','versements','caisse','banques','rapport','releves','caisseprinc','petitecaisse','caissiere','ran','creances','admin','utilisateurs'];
 function goTo(name){
   PAGES.forEach(p=>document.getElementById('pg-'+p)?.classList.remove('active'));
   document.getElementById('pg-'+name)?.classList.add('active');
@@ -3019,6 +3035,11 @@ function renderRapport(){
     : [];
   const totMachine = clotF.reduce((s,c)=>s+(c.totalMachine||0),0);
 
+  // CA crédit (tiers payants) sur la période
+  const fluxCre = CreanceModule.fluxGlobal(debut, fin);
+  const totCredit = fluxCre.ventes;
+  const totReglCreances = fluxCre.reglements;
+
   document.getElementById('rapportContent').innerHTML=`
     <div style="font-size:.75rem;color:var(--cyan);font-weight:700;margin-bottom:10px">${vueLabel}</div>
     <div class="stats-grid">
@@ -3028,6 +3049,7 @@ function renderRapport(){
       <div class="stat-card purple"><div class="stat-lbl">Confirmés</div><div class="stat-val purple">${fmt(totC)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card amber"><div class="stat-lbl">En attente</div><div class="stat-val amber">${fmt(totA)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card ${ecart>=0?'green':'red'}"><div class="stat-lbl">Écart CA/Versé</div><div class="stat-val ${ecart>=0?'green':'red'}">${ecart>=0?'+':''}${fmt(ecart)}</div><div class="stat-sub">${DEVISE}</div></div>
+      <div class="stat-card amber"><div class="stat-lbl">💳 CA Crédit (tiers)</div><div class="stat-val amber">${fmt(totCredit)}</div><div class="stat-sub">${DEVISE} — ventes à crédit période</div></div>
       <div class="stat-card green"><div class="stat-lbl">✓ Disponible banques</div><div class="stat-val green">${fmt(totalDispo())}</div><div class="stat-sub">${DEVISE} — global</div></div>
       <div class="stat-card amber"><div class="stat-lbl">⏳ En transit MM</div><div class="stat-val amber">${fmt(totalTransit())}</div><div class="stat-sub">${DEVISE}</div></div>
     </div>
@@ -5346,6 +5368,888 @@ async function refreshPage(){
     caissiere:renderSuiviCaissiere,admin:renderAdmin,utilisateurs:renderUsers})[active]?.();
   toast('Données actualisées ✓');
 }
+// ══════════════════════════════════════════════════════
+// [SECTION:CREANCES] ⭐ MODULE CRÉANCES — TIERS PAYANTS (v5.0)
+// ══════════════════════════════════════════════════════
+
+// ── Débiteurs par défaut (19 tiers-payants PSRM) ────────────────────
+const DEF_DEBITEURS = [
+  { id:'deb01', nom:'AGEMAS',                         sigle:'AGEMAS',      type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb02', nom:'AMAT CI',                         sigle:'AMAT',        type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb03', nom:'ANKARA SERVICES',                 sigle:'ANKARA',      type:'entreprise_ipm',   actif:true, pdv:'PSRM', delaiJours:60 },
+  { id:'deb04', nom:'ASCOMA',                          sigle:'ASCOMA',      type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb05', nom:'ATLANTIQUE ASSURANCES',           sigle:'ATLANTIQ.',   type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb06', nom:'CIMEF ASSURANCES',                sigle:'CIMEF',       type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb07', nom:'CNAM - CMU',                      sigle:'CMU',         type:'organisme_public', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb08', nom:'FONDS DE PREVOYANCE DES EAUX ET FORÊTS (FPEF)', sigle:'FPEF', type:'organisme_public', actif:true, pdv:'PSRM', delaiJours:60 },
+  { id:'deb09', nom:'IIPS',                            sigle:'IIPS',        type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb10', nom:'MADGI',                           sigle:'MADGI',       type:'entreprise_ipm',   actif:true, pdv:'PSRM', delaiJours:60 },
+  { id:'deb11', nom:'MCI',                             sigle:'MCI',         type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb12', nom:'MUGEF-CI',                        sigle:'MUGEF',       type:'mutuelle',         actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb13', nom:'MUPEMENET',                       sigle:'MUPEMENET',   type:'mutuelle',         actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb14', nom:'MUSCOP-CI',                       sigle:'MUSCOP',      type:'mutuelle',         actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb15', nom:'ODISSEY OGS PRESTATAIRE',         sigle:'ODISSEY',     type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb16', nom:'OLEA ASSURANCES',                 sigle:'OLEA',        type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb17', nom:'VITALIS',                         sigle:'VITALIS',     type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb18', nom:'VITASANTE ASSURANCES SARL',       sigle:'VITASANTE',   type:'assurance_privee', actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb19', nom:'WILLIS TOWER WATSON',             sigle:'WTW',         type:'courtier',         actif:true, pdv:'PSRM', delaiJours:90 },
+  { id:'deb20', nom:'PERSONNEL PHCIE ST RAPHAEL MBENGUE', sigle:'PERSONNEL', type:'credit_interne',  actif:true, pdv:'PSRM', delaiJours:30 },
+  { id:'deb21', nom:'CSR KASSERE',                     sigle:'CSR',         type:'entreprise_ipm',   actif:true, pdv:'PSRM', delaiJours:60 },
+];
+
+// [SECTION:CREANCES] ⭐ MODULE CRÉANCES — SOURCE UNIQUE DE VÉRITÉ (v5.0)
+// ──────────────────────────────────────────────────────────────────────
+// Principe : encours = Σventes − Σreglements − Σrejets (par débiteur)
+// Jamais de champ "solde" stocké — toujours recalculé depuis les mouvements.
+// Types valides : 'vente' | 'reglement' | 'rejet'
+// ══════════════════════════════════════════════════════════════════════
+
+const CreanceModule = (function () {
+
+  // ── Signe comptable selon le type de mouvement ──────────────────────
+  // vente   → +1 (augmente l'encours)
+  // reglement → -1 (réduit l'encours)
+  // rejet   → -1 (réduit l'encours : la créance est annulée/rejetée)
+  function sensCreance(type) {
+    return type === 'vente' ? 1 : -1;
+  }
+
+  // ── Mouvements d'un débiteur, normalisés, triés chronologiquement ──
+  function mouvementsDebiteur(debiteurId, dateMax = null) {
+    const result = [];
+    for (const c of creances) {
+      if (c.debiteurId !== debiteurId) continue;
+      if (dateMax && c.date > dateMax) continue;
+      result.push({
+        id:        c.id,
+        date:      c.date,
+        ts:        c.ts || 0,
+        type:      c.type,        // 'vente' | 'reglement' | 'rejet'
+        sens:      sensCreance(c.type),
+        montant:   c.montant || 0,
+        reference: c.reference || '',
+        note:      c.note || '',
+        caissiere: c.caissiere || '',
+        pdv:       c.pdv || 'PSRM',
+        src:       'creance'
+      });
+    }
+    result.sort((a, b) =>
+      (a.date || '').localeCompare(b.date || '') || (a.ts - b.ts)
+    );
+    return result;
+  }
+
+  // ── Encours net d'un débiteur à une date donnée ─────────────────────
+  // encours = Σ(sens × montant) de tous ses mouvements jusqu'à dateMax
+  function encoursDebiteur(debiteurId, dateMax = null) {
+    const mvtsD = mouvementsDebiteur(debiteurId, dateMax);
+    return mvtsD.reduce((s, m) => s + m.sens * m.montant, 0);
+  }
+
+  // ── Encours de TOUS les débiteurs (pour le tableau de bord) ─────────
+  function totalEncours(dateMax = null) {
+    const ids = [...new Set(creances.map(c => c.debiteurId))];
+    return ids.reduce((s, id) => s + encoursDebiteur(id, dateMax), 0);
+  }
+
+  // ── Flux sur une période (ventes / règlements / rejets) ─────────────
+  function fluxPeriode(debiteurId, debut, fin) {
+    let ventes = 0, reglements = 0, rejets = 0;
+    const mvtsD = mouvementsDebiteur(debiteurId, fin);
+    for (const m of mvtsD) {
+      if (debut && m.date < debut) continue;
+      if (m.type === 'vente')     ventes     += m.montant;
+      if (m.type === 'reglement') reglements += m.montant;
+      if (m.type === 'rejet')     rejets     += m.montant;
+    }
+    return { ventes, reglements, rejets };
+  }
+
+  // ── Flux GLOBAL sur une période (tous débiteurs confondus) ──────────
+  function fluxGlobal(debut, fin) {
+    let ventes = 0, reglements = 0, rejets = 0;
+    for (const c of creances) {
+      if (debut && c.date < debut) continue;
+      if (fin   && c.date > fin)   continue;
+      if (c.type === 'vente')     ventes     += c.montant || 0;
+      if (c.type === 'reglement') reglements += c.montant || 0;
+      if (c.type === 'rejet')     rejets     += c.montant || 0;
+    }
+    return { ventes, reglements, rejets };
+  }
+
+  // ── Ancienneté des créances ouvertes d'un débiteur ──────────────────
+  // Retourne la répartition de l'encours par tranche d'âge
+  // Méthode : chaque "vente" non encore couverte par règlements/rejets
+  // est ventilée selon son ancienneté en jours par rapport à aujourd'hui.
+  function anciennete(debiteurId, dateRef = null) {
+    const ref = dateRef || today();
+    const mvtsD = mouvementsDebiteur(debiteurId);
+    const ventes = mvtsD.filter(m => m.type === 'vente');
+
+    // Couvrir les ventes chronologiquement par les règlements+rejets
+    let couverture = mvtsD
+      .filter(m => m.type === 'reglement' || m.type === 'rejet')
+      .reduce((s, m) => s + m.montant, 0);
+
+    const tranches = { j30: 0, j60: 0, j90: 0, sup90: 0 };
+
+    for (const v of ventes) {
+      const montantRestant = Math.max(0, v.montant - couverture);
+      couverture = Math.max(0, couverture - v.montant);
+      if (montantRestant <= 0) continue;
+
+      // Calculer l'âge en jours
+      const age = Math.floor(
+        (new Date(ref) - new Date(v.date)) / 86400000
+      );
+      if      (age <= 30)  tranches.j30   += montantRestant;
+      else if (age <= 60)  tranches.j60   += montantRestant;
+      else if (age <= 90)  tranches.j90   += montantRestant;
+      else                 tranches.sup90 += montantRestant;
+    }
+    return tranches;
+  }
+
+  // ── Soldes chronologiques (pour affichage "encours après" ligne/ligne) ─
+  function encoursChronologiques(debiteurId) {
+    const mvtsD = mouvementsDebiteur(debiteurId);
+    const map = {};
+    let running = 0;
+    for (const m of mvtsD) {
+      running += m.sens * m.montant;
+      map[m.id] = running;
+    }
+    return map;
+  }
+
+  // ── Récap global par débiteur (pour le tableau de bord créances) ────
+  function recapParDebiteur(debut = null, fin = null) {
+    return debiteurs
+      .filter(d => d.actif !== false)
+      .map(d => {
+        const flux = fluxPeriode(d.id, debut, fin);
+        const encours = encoursDebiteur(d.id);
+        const tranche = anciennete(d.id);
+        return {
+          id:         d.id,
+          nom:        d.nom,
+          sigle:      d.sigle || d.nom,
+          ventes:     flux.ventes,
+          reglements: flux.reglements,
+          rejets:     flux.rejets,
+          encours,
+          alerteRetard: tranche.sup90 > 0
+        };
+      })
+      .filter(d => d.ventes > 0 || d.encours > 0); // masquer les inactifs
+  }
+
+  return {
+    mouvementsDebiteur,
+    encoursDebiteur,
+    totalEncours,
+    fluxPeriode,
+    fluxGlobal,
+    anciennete,
+    encoursChronologiques,
+    recapParDebiteur
+  };
+})();
+
+window.CreanceModule = CreanceModule;
+
+
+// ══════════════════════════════════════════════════════
+// PARSER XLS — Journal des Ventes à Crédit (Mediciel)
+// ══════════════════════════════════════════════════════
+// Lit le fichier XLS/CSV Mediciel "Journal des Ventes à Crédit par Jour"
+// Structure attendue : colonnes Client | Total Crédit | Ratio (%)
+// Retourne : { date, lignes:[{client, montant}], total }
+async function parserXLSMediciel(file) {
+  const XLSX = await loadSheetJS();
+  const buf  = await file.arrayBuffer();
+  const wb   = XLSX.read(buf, { type: 'array', cellDates: true });
+  const ws   = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+  // Chercher la ligne d'en-tête (contient "Client" et "Total Crédit")
+  let headerIdx = -1;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i].map(c => String(c).trim().toLowerCase());
+    if (r.some(c => c.includes('client')) && r.some(c => c.includes('cr'))) {
+      headerIdx = i; break;
+    }
+  }
+  if (headerIdx < 0) throw new Error('Format XLS Mediciel non reconnu — colonne Client introuvable');
+
+  const headers = rows[headerIdx].map(c => String(c).trim().toLowerCase());
+  const idxClient  = headers.findIndex(h => h.includes('client'));
+  const idxMontant = headers.findIndex(h => h.includes('total') || h.includes('crédit') || h.includes('credit'));
+
+  // Extraire la date depuis les premières lignes (ex: "19/07/2026")
+  let dateDoc = today();
+  for (let i = 0; i < Math.min(headerIdx, 10); i++) {
+    for (const cell of rows[i]) {
+      const m = String(cell).match(/(\d{2})\/(\d{2})\/(\d{4})/);
+      if (m) { dateDoc = `${m[3]}-${m[2]}-${m[1]}`; break; }
+    }
+    if (dateDoc !== today()) break;
+  }
+
+  // Lire les lignes de données
+  const lignes = [];
+  let total = 0;
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const row = rows[i];
+    const client  = String(row[idxClient] || '').trim();
+    const montant = parseFloat(String(row[idxMontant] || '0').replace(/[^0-9,.-]/g, '').replace(',', '.')) || 0;
+    // Arrêter sur ligne TOTAL ou vide
+    if (!client || client.toUpperCase().includes('TOTAL') || client.toUpperCase().includes('SOUS')) {
+      if (client.toUpperCase().includes('TOTAL')) total = montant;
+      break;
+    }
+    if (montant > 0) lignes.push({ client, montant });
+  }
+
+  // Si total non trouvé dans le fichier, recalculer
+  if (total === 0) total = lignes.reduce((s, l) => s + l.montant, 0);
+
+  return { date: dateDoc, lignes, total };
+}
+
+// ── Matcher client Mediciel → débiteur PharmaCash ───────────────────
+// Normalise les noms pour résister aux variantes typographiques
+function matcherDebiteur(nomMediciel) {
+  const normalize = s => s.toUpperCase().trim()
+    .replace(/[ÀÁÂÃÄÅ]/g, 'A').replace(/[ÈÉÊË]/g, 'E')
+    .replace(/[ÌÍÎÏ]/g, 'I').replace(/[ÒÓÔÕÖ]/g, 'O')
+    .replace(/[ÙÚÛÜ]/g, 'U').replace(/[-_.,]/g, ' ')
+    .replace(/\s+/g, ' ');
+  const nom = normalize(nomMediciel);
+  // Cherche d'abord par correspondance exacte, puis partielle
+  return debiteurs.find(d => normalize(d.nom) === nom)
+      || debiteurs.find(d => nom.includes(normalize(d.nom)) || normalize(d.nom).includes(nom))
+      || null;
+}
+
+// ══════════════════════════════════════════════════════
+// [SECTION:CREANCE_UI] ÉCRAN CRÉANCES — Import XLS + Saisie manuelle
+// ══════════════════════════════════════════════════════
+
+// ── Initialise les débiteurs si la collection est vide ──────────────
+async function initDebiteursDefaut() {
+  if (debiteurs.length > 0) return;
+  for (const d of DEF_DEBITEURS) {
+    debiteurs.push(d);
+    await saveItem('debiteurs', d);
+  }
+  toast('21 débiteurs initialisés ✓', 'success');
+}
+window.initDebiteursDefaut = initDebiteursDefaut;
+
+// ── Rendu principal de la page Créances ─────────────────────────────
+function renderCreances() {
+  const el = document.getElementById('pg-creances');
+  if (!el) return;
+
+  const t = today();
+  const debutMois = t.slice(0, 7) + '-01';
+  const recap = CreanceModule.recapParDebiteur(debutMois, t);
+  const totalEnc = CreanceModule.totalEncours();
+  const fluxM = CreanceModule.fluxGlobal(debutMois, t);
+
+  el.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">💳 Créances & Tiers Payants</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-sm" onclick="ouvrirImportXLSCreances()">📥 Importer XLS Mediciel</button>
+        <button class="btn btn-sm btn-secondary" onclick="ouvrirSaisieCreance()">✏️ Saisie manuelle</button>
+        <button class="btn btn-sm btn-secondary" onclick="ouvrirHistoriqueCreances()">📋 Historique</button>
+      </div>
+    </div>
+
+    <!-- KPIs du mois -->
+    <div class="stats-grid" style="margin-bottom:14px">
+      <div class="stat-card amber">
+        <div class="stat-lbl">💳 Encours total</div>
+        <div class="stat-val amber">${fmt(totalEnc)}</div>
+        <div class="stat-sub">${DEVISE} — tous débiteurs</div>
+      </div>
+      <div class="stat-card green">
+        <div class="stat-lbl">📈 Ventes crédit (mois)</div>
+        <div class="stat-val green">${fmt(fluxM.ventes)}</div>
+        <div class="stat-sub">${DEVISE}</div>
+      </div>
+      <div class="stat-card blue">
+        <div class="stat-lbl">✅ Réglements reçus</div>
+        <div class="stat-val blue">${fmt(fluxM.reglements)}</div>
+        <div class="stat-sub">${DEVISE}</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-lbl">❌ Rejets</div>
+        <div class="stat-val red">${fmt(fluxM.rejets)}</div>
+        <div class="stat-sub">${DEVISE}</div>
+      </div>
+    </div>
+
+    <!-- Tableau par débiteur -->
+    <div class="card">
+      <div class="card-title" style="margin-bottom:8px">Encours par débiteur</div>
+      ${recap.length === 0 ? `<div style="color:var(--text3);padding:20px;text-align:center">
+        Aucune créance enregistrée.<br>
+        <button class="btn btn-sm" style="margin-top:10px" onclick="initDebiteursDefaut()">Initialiser les débiteurs</button>
+      </div>` : `
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>Débiteur</th><th>Ventes (mois)</th><th>Réglements</th><th>Rejets</th>
+          <th>Encours net</th><th>Alerte</th><th></th>
+        </tr></thead>
+        <tbody>
+          ${recap.map(d => `<tr style="cursor:pointer" onclick="ouvrirDetailDebiteur('${d.id}')">
+            <td><b>${d.sigle}</b><div style="font-size:.7rem;color:var(--text3)">${d.nom}</div></td>
+            <td class="amt pos">${fmt(d.ventes)}</td>
+            <td class="amt pos">${fmt(d.reglements)}</td>
+            <td class="amt neg">${d.rejets > 0 ? fmt(d.rejets) : '—'}</td>
+            <td class="amt ${d.encours > 0 ? 'amber' : 'pos'}">${fmt(d.encours)}</td>
+            <td>${d.alerteRetard ? '<span class="badge red">+90j</span>' : '—'}</td>
+            <td><button class="btn btn-sm btn-secondary" onclick="event.stopPropagation();ouvrirSaisieCreance('${d.id}')">+ Saisir</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>`}
+    </div>
+  `;
+}
+window.renderCreances = renderCreances;
+
+// ── Modal Import XLS Mediciel ────────────────────────────────────────
+function ouvrirImportXLSCreances() {
+  openM('mImportCreances');
+}
+window.ouvrirImportXLSCreances = ouvrirImportXLSCreances;
+
+async function importerXLSCreances() {
+  const fileInput = document.getElementById('iXLSCreances');
+  if (!fileInput?.files?.length) { toast('Sélectionne un fichier XLS', 'warn'); return; }
+  const file = fileInput.files[0];
+  try {
+    const parsed = await parserXLSMediciel(file);
+    if (parsed.lignes.length === 0) { toast('Aucune ligne trouvée dans le fichier', 'warn'); return; }
+
+    // Afficher la prévisualisation
+    const prevEl = document.getElementById('prevImportCreances');
+    if (prevEl) {
+      let html = `<div style="font-size:.8rem;color:var(--text2);margin-bottom:8px">📅 Date détectée : <b>${parsed.date}</b> — Total : <b>${fmt(parsed.total)} FCFA</b></div>`;
+      html += '<div class="tbl-wrap"><table><thead><tr><th>Client Mediciel</th><th>Montant</th><th>Débiteur PharmaCash</th></tr></thead><tbody>';
+      for (const l of parsed.lignes) {
+        const deb = matcherDebiteur(l.client);
+        const debNom = deb ? `<span style="color:var(--green)">${deb.sigle}</span>` :
+          `<span style="color:var(--red)">⚠ Non reconnu</span>`;
+        html += `<tr><td>${l.client}</td><td class="amt">${fmt(l.montant)}</td><td>${debNom}</td></tr>`;
+      }
+      html += '</tbody></table></div>';
+      html += `<button class="btn" style="margin-top:12px" onclick="validerImportCreances(${JSON.stringify(parsed).replace(/"/g,'&quot;')})">✅ Valider l'import</button>`;
+      prevEl.innerHTML = html;
+    }
+  } catch (e) {
+    toast('Erreur lecture XLS : ' + e.message, 'error');
+  }
+}
+window.importerXLSCreances = importerXLSCreances;
+
+async function validerImportCreances(parsed) {
+  if (!parsed?.lignes?.length) return;
+  let ok = 0, skip = 0;
+  for (const l of parsed.lignes) {
+    const deb = matcherDebiteur(l.client);
+    if (!deb) { skip++; continue; }
+    const mvt = {
+      id: 'cre_' + uid(),
+      debiteurId:   deb.id,
+      debiteurNom:  deb.nom,
+      date:         parsed.date,
+      ts:           Date.now(),
+      type:         'vente',
+      montant:      l.montant,
+      reference:    `MEDICIEL-${parsed.date}`,
+      caissiere:    currentUser?.nom || '',
+      pdv:          'PSRM',
+      note:         `Import Mediciel ${parsed.date}`
+    };
+    creances.push(mvt);
+    await saveItem('creances', mvt);
+    ok++;
+  }
+  saveLocal();
+  closeM('mImportCreances');
+  toast(`Import terminé : ${ok} vente(s) enregistrée(s)${skip > 0 ? `, ${skip} non reconnu(s)` : ''} ✓`, 'success');
+  renderCreances();
+  renderDashboard();
+}
+window.validerImportCreances = validerImportCreances;
+
+// ── Modal Saisie manuelle ────────────────────────────────────────────
+function ouvrirSaisieCreance(debiteurId = '') {
+  const sel = document.getElementById('sCreanceDebiteur');
+  if (sel) {
+    sel.innerHTML = debiteurs.filter(d => d.actif !== false)
+      .sort((a, b) => a.nom.localeCompare(b.nom))
+      .map(d => `<option value="${d.id}" ${d.id === debiteurId ? 'selected' : ''}>${d.nom}</option>`)
+      .join('');
+  }
+  document.getElementById('sCreanceDate').value = today();
+  document.getElementById('sCreanceMontant').value = '';
+  document.getElementById('sCreanceRef').value = '';
+  document.getElementById('sCreanceNote').value = '';
+  document.getElementById('sCreanceType').value = 'vente';
+  openM('mSaisieCreance');
+}
+window.ouvrirSaisieCreance = ouvrirSaisieCreance;
+
+async function sauvegarderCreance() {
+  const debiteurId = document.getElementById('sCreanceDebiteur')?.value;
+  const type       = document.getElementById('sCreanceType')?.value;
+  const date       = document.getElementById('sCreanceDate')?.value;
+  const montant    = parseFloat(document.getElementById('sCreanceMontant')?.value || '0');
+  const reference  = document.getElementById('sCreanceRef')?.value?.trim() || '';
+  const note       = document.getElementById('sCreanceNote')?.value?.trim() || '';
+
+  if (!debiteurId) { toast('Sélectionne un débiteur', 'warn'); return; }
+  if (montant <= 0) { toast('Montant invalide (doit être > 0)', 'warn'); return; }
+  if (!date)        { toast('Date obligatoire', 'warn'); return; }
+
+  const deb = debiteurs.find(d => d.id === debiteurId);
+  const mvt = {
+    id: 'cre_' + uid(),
+    debiteurId,
+    debiteurNom:  deb?.nom || debiteurId,
+    date,
+    ts:           Date.now(),
+    type,
+    montant,
+    reference,
+    caissiere:    currentUser?.nom || '',
+    pdv:          'PSRM',
+    note
+  };
+  creances.push(mvt);
+  await saveItem('creances', mvt);
+  saveLocal();
+  closeM('mSaisieCreance');
+  toast(`${type === 'vente' ? 'Vente crédit' : type === 'reglement' ? 'Règlement' : 'Rejet'} enregistré ✓`, 'success');
+  renderCreances();
+  renderDashboard();
+}
+window.sauvegarderCreance = sauvegarderCreance;
+
+// ── Historique complet des mouvements créances ───────────────────────
+function ouvrirHistoriqueCreances() {
+  const sorted = [...creances].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts);
+  const el = document.getElementById('histCreancesBody');
+  if (!el) return;
+  el.innerHTML = sorted.slice(0, 200).map(c => {
+    const typeBadge = c.type === 'vente' ? '<span class="badge bg">Vente</span>'
+      : c.type === 'reglement' ? '<span class="badge bb">Règlement</span>'
+      : '<span class="badge red">Rejet</span>';
+    return `<tr>
+      <td>${c.date}</td>
+      <td>${c.debiteurNom || c.debiteurId}</td>
+      <td>${typeBadge}</td>
+      <td class="amt ${c.type === 'vente' ? 'pos' : 'neg'}">${fmt(c.montant)}</td>
+      <td style="font-size:.75rem">${c.reference || '—'}</td>
+      <td style="font-size:.75rem">${c.note || '—'}</td>
+      <td><button class="btn btn-sm btn-secondary" onclick="supprimerCreance('${c.id}')">✕</button></td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text3)">Aucun mouvement</td></tr>';
+  openM('mHistoriqueCreances');
+}
+window.ouvrirHistoriqueCreances = ouvrirHistoriqueCreances;
+
+async function supprimerCreance(id) {
+  if (!confirm('Supprimer ce mouvement ?')) return;
+  creances = creances.filter(c => c.id !== id);
+  await delItem('creances', id);
+  saveLocal();
+  toast('Mouvement supprimé', 'success');
+  renderCreances();
+  renderDashboard();
+}
+window.supprimerCreance = supprimerCreance;
+
+// ── Détail d'un débiteur ─────────────────────────────────────────────
+function ouvrirDetailDebiteur(debiteurId) {
+  const deb = debiteurs.find(d => d.id === debiteurId);
+  if (!deb) return;
+  const mvtsD = CreanceModule.mouvementsDebiteur(debiteurId);
+  const encours = CreanceModule.encoursDebiteur(debiteurId);
+  const chrono  = CreanceModule.encoursChronologiques(debiteurId);
+  const tranche = CreanceModule.anciennete(debiteurId);
+  const el = document.getElementById('detailDebiteurContent');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="font-size:1rem;font-weight:700;color:var(--cyan);margin-bottom:12px">${deb.nom}</div>
+    <div class="stats-grid" style="margin-bottom:12px">
+      <div class="stat-card amber"><div class="stat-lbl">Encours net</div><div class="stat-val amber">${fmt(encours)}</div></div>
+      <div class="stat-card"><div class="stat-lbl">&lt;30j</div><div class="stat-val">${fmt(tranche.j30)}</div></div>
+      <div class="stat-card"><div class="stat-lbl">30–60j</div><div class="stat-val">${fmt(tranche.j60)}</div></div>
+      <div class="stat-card"><div class="stat-lbl">60–90j</div><div class="stat-val">${fmt(tranche.j90)}</div></div>
+      <div class="stat-card red"><div class="stat-lbl">&gt;90j ⚠</div><div class="stat-val red">${fmt(tranche.sup90)}</div></div>
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Date</th><th>Type</th><th>Montant</th><th>Encours après</th><th>Référence</th></tr></thead>
+      <tbody>
+        ${[...mvtsD].reverse().map(m => `<tr>
+          <td>${m.date}</td>
+          <td>${m.type === 'vente' ? '<span class="badge bg">Vente</span>'
+            : m.type === 'reglement' ? '<span class="badge bb">Règlement</span>'
+            : '<span class="badge red">Rejet</span>'}</td>
+          <td class="amt ${m.type === 'vente' ? 'pos' : 'neg'}">${fmt(m.montant)}</td>
+          <td class="amt amber">${fmt(chrono[m.id] || 0)}</td>
+          <td style="font-size:.75rem">${m.reference || '—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+    <button class="btn" style="margin-top:12px" onclick="ouvrirSaisieCreance('${debiteurId}');closeM('mDetailDebiteur')">+ Nouveau mouvement</button>
+  `;
+  openM('mDetailDebiteur');
+}
+window.ouvrirDetailDebiteur = ouvrirDetailDebiteur;
+
+// ══════════════════════════════════════════════════════
+// [SECTION:RECOUVREMENT] MODULE RECOUVREMENT v5.1
+// Bordereaux de facturation + lettrage règlements + workflow chèque GASTP
+// ══════════════════════════════════════════════════════
+
+// ── Génération de référence bordereau ───────────────────────────────
+// Format : BRD-{SIGLE}-{MMYYYY}  ex: BRD-ATL-072026
+function genRefBordereau(debiteurId, periode) {
+  const deb = debiteurs.find(d => d.id === debiteurId);
+  const sigle = (deb?.sigle || debiteurId).slice(0,5).toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const [y, m] = (periode || today().slice(0,7)).split('-');
+  return `BRD-${sigle}-${m}${y}`;
+}
+window.genRefBordereau = genRefBordereau;
+
+// ── Statuts possibles d'un bordereau ────────────────────────────────
+// 'emis'             → facture envoyée à l'assurance
+// 'en_recouvrement'  → transmis à GASTP
+// 'regle_partiel'    → règlement partiel reçu
+// 'regle'            → soldé intégralement
+// 'rejete'           → rejeté par l'assurance (sans remboursement)
+// 'litige'           → contesté, en attente de décision
+
+// ── Créer un nouveau bordereau ───────────────────────────────────────
+function ouvrirNouveauBordereau(debiteurId = '') {
+  const sel = document.getElementById('brdDebiteur');
+  if (sel) {
+    sel.innerHTML = debiteurs.filter(d => d.actif !== false)
+      .sort((a,b) => a.nom.localeCompare(b.nom))
+      .map(d => `<option value="${d.id}" ${d.id===debiteurId?'selected':''}>${d.nom}</option>`)
+      .join('');
+    // Déclencher génération référence auto
+    onBrdDebiteurChange();
+  }
+  const pm = today().slice(0,7);
+  document.getElementById('brdPeriode').value = pm;
+  document.getElementById('brdMontant').value = '';
+  document.getElementById('brdNotes').value = '';
+  openM('mNouveauBordereau');
+}
+window.ouvrirNouveauBordereau = ouvrirNouveauBordereau;
+
+function onBrdDebiteurChange() {
+  const did = document.getElementById('brdDebiteur')?.value;
+  const per = document.getElementById('brdPeriode')?.value;
+  const refEl = document.getElementById('brdRef');
+  if (refEl && did && per) refEl.value = genRefBordereau(did, per);
+}
+window.onBrdDebiteurChange = onBrdDebiteurChange;
+
+async function sauvegarderBordereau() {
+  const debiteurId  = document.getElementById('brdDebiteur')?.value;
+  const periode     = document.getElementById('brdPeriode')?.value;
+  const reference   = document.getElementById('brdRef')?.value?.trim();
+  const montant     = parseFloat(document.getElementById('brdMontant')?.value || '0');
+  const dateEmission= document.getElementById('brdDateEmission')?.value || today();
+  const notes       = document.getElementById('brdNotes')?.value?.trim() || '';
+
+  if (!debiteurId)  { toast('Sélectionne un débiteur', 'warn'); return; }
+  if (!periode)     { toast('Période obligatoire', 'warn'); return; }
+  if (montant <= 0) { toast('Montant invalide', 'warn'); return; }
+
+  const deb = debiteurs.find(d => d.id === debiteurId);
+  const brd = {
+    id:           'brd_' + uid(),
+    debiteurId,
+    debiteurNom:  deb?.nom || debiteurId,
+    periode,
+    reference:    reference || genRefBordereau(debiteurId, periode),
+    montant,
+    montantRegle: 0,
+    dateEmission,
+    dateRecouvrement: '',
+    dateReglement:    '',
+    statut:       'emis',
+    notes,
+    ts:           Date.now(),
+    creePar:      currentUser?.nom || ''
+  };
+  bordereaux.push(brd);
+  await saveItem('bordereaux', brd);
+  saveLocal();
+  closeM('mNouveauBordereau');
+  toast(`Bordereau ${brd.reference} créé ✓`, 'success');
+  renderCreances();
+}
+window.sauvegarderBordereau = sauvegarderBordereau;
+
+// ── Transmettre bordereau à GASTP ────────────────────────────────────
+async function transmettreGASTP(brdId) {
+  const brd = bordereaux.find(b => b.id === brdId);
+  if (!brd) return;
+  brd.statut = 'en_recouvrement';
+  brd.dateRecouvrement = today();
+  await saveItem('bordereaux', brd);
+  saveLocal();
+  toast(`Bordereau ${brd.reference} transmis à GASTP ✓`, 'success');
+  renderCreances();
+}
+window.transmettreGASTP = transmettreGASTP;
+
+// ── Saisir un règlement avec lettrage ────────────────────────────────
+function ouvrirReglementBordereau(brdId) {
+  const brd = bordereaux.find(b => b.id === brdId);
+  if (!brd) return;
+  // Pré-remplir le modal règlement avec les infos du bordereau
+  document.getElementById('rglBrdId').value      = brdId;
+  document.getElementById('rglDebiteur').value   = brd.debiteurNom;
+  document.getElementById('rglReference').value  = brd.reference;
+  const restant = brd.montant - (brd.montantRegle || 0);
+  document.getElementById('rglMontant').value    = restant;
+  document.getElementById('rglDate').value       = today();
+  document.getElementById('rglCanal').value      = 'cheque_gastp';
+  document.getElementById('rglStatut').value     = 'cheque_recu';
+  document.getElementById('rglCompte').innerHTML = comptes
+    .filter(c => c.cat === 'banque' || c.cat === 'caisse')
+    .map(c => `<option value="${c.id}">${c.nom}</option>`)
+    .join('');
+  document.getElementById('rglNote').value = '';
+  openM('mReglementBordereau');
+}
+window.ouvrirReglementBordereau = ouvrirReglementBordereau;
+
+async function sauvegarderReglement() {
+  const brdId     = document.getElementById('rglBrdId')?.value;
+  const montant   = parseFloat(document.getElementById('rglMontant')?.value || '0');
+  const date      = document.getElementById('rglDate')?.value;
+  const canal     = document.getElementById('rglCanal')?.value;
+  const statut    = document.getElementById('rglStatut')?.value;
+  const compteId  = document.getElementById('rglCompte')?.value;
+  const note      = document.getElementById('rglNote')?.value?.trim() || '';
+
+  if (montant <= 0) { toast('Montant invalide', 'warn'); return; }
+  if (!date)        { toast('Date obligatoire', 'warn'); return; }
+  if (!compteId)    { toast('Sélectionne le compte bancaire', 'warn'); return; }
+
+  const brd = bordereaux.find(b => b.id === brdId);
+  if (!brd) { toast('Bordereau introuvable', 'error'); return; }
+
+  // 1. Mouvement créance (règlement — réduit l'encours)
+  const mvtCre = {
+    id:           'cre_' + uid(),
+    debiteurId:   brd.debiteurId,
+    debiteurNom:  brd.debiteurNom,
+    date,
+    ts:           Date.now(),
+    type:         'reglement',
+    montant,
+    reference:    brd.reference,
+    bordereauId:  brdId,
+    canal,
+    statut,       // 'cheque_recu' | 'remis_banque' | 'encaisse' | 'virement'
+    compteId,
+    caissiere:    currentUser?.nom || '',
+    pdv:          'PSRM',
+    note
+  };
+  creances.push(mvtCre);
+  await saveItem('creances', mvtCre);
+
+  // 2. Mettre à jour le bordereau
+  brd.montantRegle = (brd.montantRegle || 0) + montant;
+  brd.statut = brd.montantRegle >= brd.montant ? 'regle' : 'regle_partiel';
+  if (brd.statut === 'regle') brd.dateReglement = date;
+  await saveItem('bordereaux', brd);
+
+  // 3. Si virement ou chèque encaissé → écriture immédiate dans mvts bancaires
+  if (statut === 'encaisse' || canal === 'virement') {
+    await _crediterCompteBanque(compteId, montant, date, brd.reference,
+      `Règlement ${brd.debiteurNom} — ${brd.reference}`);
+  }
+
+  saveLocal();
+  closeM('mReglementBordereau');
+  const statutLabel = statut === 'cheque_recu' ? 'Chèque reçu ✓'
+    : statut === 'remis_banque' ? 'Remis en banque ✓'
+    : statut === 'encaisse' ? 'Encaissé ✓'
+    : 'Virement enregistré ✓';
+  toast(`Règlement ${brd.reference} — ${statutLabel}`, 'success');
+  renderCreances();
+  renderDashboard();
+}
+window.sauvegarderReglement = sauvegarderReglement;
+
+// ── Passage chèque → encaissé (workflow 2e étape) ────────────────────
+async function encaisserCheque(creanceId) {
+  const mvt = creances.find(c => c.id === creanceId);
+  if (!mvt) return;
+  if (!confirm(`Confirmer l'encaissement de ${fmt(mvt.montant)} FCFA — ${mvt.reference} ?`)) return;
+
+  mvt.statut = 'encaisse';
+  await saveItem('creances', mvt);
+
+  // Écriture dans mvts bancaires maintenant
+  await _crediterCompteBanque(mvt.compteId, mvt.montant, today(), mvt.reference,
+    `Chèque encaissé — ${mvt.debiteurNom} — ${mvt.reference}`);
+
+  saveLocal();
+  toast(`Chèque encaissé ✓ — écriture bancaire créée`, 'success');
+  renderCreances();
+  renderDashboard();
+}
+window.encaisserCheque = encaisserCheque;
+
+// ── Helper : créditer un compte bancaire (entrée dans mvts) ──────────
+async function _crediterCompteBanque(compteId, montant, date, ref, libelle) {
+  const cpt = comptes.find(c => c.id === compteId);
+  if (!cpt) return;
+  const mvtBanque = {
+    id:       'mvt_' + uid(),
+    date,
+    ts:       Date.now(),
+    compte:   compteId,
+    type:     'entrée',
+    rubrique: 'Règlement tiers-payant',
+    montant,
+    libelle,
+    ref,
+    saisie:   currentUser?.nom || '',
+    src:      'recouvrement'
+  };
+  mvts.push(mvtBanque);
+  await saveItem('mvts', mvtBanque);
+  // Mettre à jour le solde compte
+  cpt.solde = (cpt.solde || 0) + montant;
+  await saveItem('comptes', cpt);
+}
+
+// ── Rendu onglet Bordereaux dans la page Créances ───────────────────
+function renderBordereaux() {
+  const el = document.getElementById('tabBordereaux');
+  if (!el) return;
+
+  const statutBadge = s => ({
+    emis:             '<span class="badge bg">Émis</span>',
+    en_recouvrement:  '<span class="badge amber">GASTP</span>',
+    regle_partiel:    '<span class="badge purple">Partiel</span>',
+    regle:            '<span class="badge green">Réglé ✓</span>',
+    rejete:           '<span class="badge red">Rejeté</span>',
+    litige:           '<span class="badge red">Litige</span>'
+  }[s] || `<span class="badge">${s}</span>`);
+
+  const sorted = [...bordereaux].sort((a,b) => b.periode.localeCompare(a.periode));
+
+  el.innerHTML = sorted.length === 0
+    ? `<div style="color:var(--text3);padding:20px;text-align:center">
+        Aucun bordereau.<br>
+        <button class="btn btn-sm" style="margin-top:10px" onclick="ouvrirNouveauBordereau()">+ Créer un bordereau</button>
+       </div>`
+    : `<div class="tbl-wrap"><table>
+        <thead><tr>
+          <th>Référence</th><th>Débiteur</th><th>Période</th>
+          <th>Montant</th><th>Réglé</th><th>Reste</th>
+          <th>Statut</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+          ${sorted.map(b => {
+            const reste = b.montant - (b.montantRegle || 0);
+            return `<tr>
+              <td style="font-size:.78rem;font-weight:600">${b.reference}</td>
+              <td style="font-size:.78rem">${b.debiteurNom}</td>
+              <td style="font-size:.78rem">${b.periode}</td>
+              <td class="amt">${fmt(b.montant)}</td>
+              <td class="amt pos">${fmt(b.montantRegle||0)}</td>
+              <td class="amt ${reste>0?'amber':'pos'}">${reste>0?fmt(reste):'—'}</td>
+              <td>${statutBadge(b.statut)}</td>
+              <td>
+                <div style="display:flex;gap:4px;flex-wrap:wrap">
+                  ${b.statut === 'emis' ? `<button class="btn btn-sm btn-secondary" onclick="transmettreGASTP('${b.id}')">→ GASTP</button>` : ''}
+                  ${b.statut !== 'regle' && b.statut !== 'rejete' ? `<button class="btn btn-sm" onclick="ouvrirReglementBordereau('${b.id}')">💰 Régler</button>` : ''}
+                </div>
+              </td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table></div>`;
+
+  // Chèques en transit (reçus mais pas encore encaissés)
+  const cheqTransit = creances.filter(c =>
+    c.type === 'reglement' && (c.statut === 'cheque_recu' || c.statut === 'remis_banque')
+  );
+  if (cheqTransit.length > 0) {
+    el.innerHTML += `
+      <div class="card" style="margin-top:14px;border-left:3px solid var(--amber)">
+        <div class="card-title" style="color:var(--amber)">⏳ Chèques GASTP en transit</div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Débiteur</th><th>Référence</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+          <tbody>
+            ${cheqTransit.map(c => `<tr>
+              <td>${c.debiteurNom}</td>
+              <td style="font-size:.78rem">${c.reference}</td>
+              <td class="amt amber">${fmt(c.montant)}</td>
+              <td>${c.statut === 'cheque_recu'
+                ? '<span class="badge amber">Chèque reçu</span>'
+                : '<span class="badge blue">Remis banque</span>'}</td>
+              <td>
+                ${c.statut === 'cheque_recu'
+                  ? `<button class="btn btn-sm btn-secondary" onclick="majStatutCheque('${c.id}','remis_banque')">→ Remis banque</button>`
+                  : ''}
+                <button class="btn btn-sm" onclick="encaisserCheque('${c.id}')">✓ Encaisser</button>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table></div>
+      </div>`;
+  }
+}
+window.renderBordereaux = renderBordereaux;
+
+// ── Mise à jour statut chèque (reçu → remis banque) ─────────────────
+async function majStatutCheque(creanceId, nouveauStatut) {
+  const mvt = creances.find(c => c.id === creanceId);
+  if (!mvt) return;
+  mvt.statut = nouveauStatut;
+  await saveItem('creances', mvt);
+  saveLocal();
+  toast('Statut mis à jour ✓', 'success');
+  renderCreances();
+}
+window.majStatutCheque = majStatutCheque;
+
+// ── Stats recouvrement pour le dashboard créances ────────────────────
+function statsRecouvrement() {
+  const enCours = bordereaux.filter(b =>
+    b.statut === 'emis' || b.statut === 'en_recouvrement' || b.statut === 'regle_partiel'
+  );
+  const montantEnCours = enCours.reduce((s,b) => s + (b.montant - (b.montantRegle||0)), 0);
+  const chequesTransit = creances.filter(c =>
+    c.type === 'reglement' && (c.statut === 'cheque_recu' || c.statut === 'remis_banque')
+  );
+  const montantTransit = chequesTransit.reduce((s,c) => s + c.montant, 0);
+  return { enCours: enCours.length, montantEnCours, montantTransit };
+}
+
 // ══════════════════════════════════════════════════════
 // [SECTION:CORRECTIONS] CORRECTION MASSIVE — Réimputation clôtures tête de pont
 // Supprime tous les versements/mvts de clôture imputés sur

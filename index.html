@@ -119,6 +119,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <div class="nav-item" onclick="goTo('caissiere')"><span class="nav-icon">👤</span> Suivi caissières</div>
       <div class="nav-item" onclick="goTo('ran')" style="color:var(--cyan)"><span class="nav-icon">📅</span> Reports à Nouveaux</div>
       <div class="nav-sec admin-only">Administration</div>
+      <div class="nav-item" onclick="goTo('creances')" style="color:var(--amber)"><span class="nav-icon">💳</span> Créances & TP</div>
       <div class="nav-item admin-only" onclick="goTo('admin')"><span class="nav-icon">⚙️</span> Configuration</div>
       <div class="nav-item admin-only" onclick="goTo('utilisateurs')"><span class="nav-icon">👥</span> Utilisateurs</div>
       <div class="sep" style="margin:8px 16px"></div>
@@ -370,6 +371,10 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
         <div class="releve-preview" id="relevePreview"><div class="empty-state"><div class="ei">🖨️</div>Sélectionne le type de relevé et clique sur "Générer"</div></div>
       </div>
       <!-- REPORTS À NOUVEAUX (RAN) v4.2 -->
+      <div class="pg" id="pg-creances">
+        <!-- Rendu par renderCreances() dans app.js -->
+      </div>
+
       <div class="pg" id="pg-ran">
         <div class="pg-header">
           <div>
@@ -884,5 +889,227 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
     <div class="modal-ftr"><button class="btn btn-ghost" onclick="closeM('mVacation')">Annuler</button><button class="btn btn-green" onclick="saveVacation()">Enregistrer</button></div>
   </div>
 </div>
+
+<!-- ═══ MODAUX CRÉANCES ═══════════════════════════════════════════ -->
+
+<!-- Import XLS Mediciel -->
+<div class="modal-ov" id="mImportCreances">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-hdr">
+      <div class="modal-title">📥 Import XLS — Journal Ventes à Crédit (Mediciel)</div>
+      <button class="close-x" onclick="closeM('mImportCreances')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg" style="margin-bottom:14px">
+        <label>Fichier XLS / XLSX Mediciel</label>
+        <input type="file" id="iXLSCreances" accept=".xls,.xlsx,.csv" class="fi" onchange="importerXLSCreances()">
+        <div style="font-size:.75rem;color:var(--text3);margin-top:4px">Journal des Ventes à Crédit par Jour — exporté depuis Mediciel</div>
+      </div>
+      <div id="prevImportCreances" style="margin-top:10px"></div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mImportCreances')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Saisie manuelle d'un mouvement créance -->
+<div class="modal-ov" id="mSaisieCreance">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">✏️ Saisie créance</div>
+      <button class="close-x" onclick="closeM('mSaisieCreance')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg2">
+        <div class="fg">
+          <label>Date *</label>
+          <input type="date" id="sCreanceDate" class="fi">
+        </div>
+        <div class="fg">
+          <label>Type *</label>
+          <select id="sCreanceType" class="fi">
+            <option value="vente">📈 Vente à crédit</option>
+            <option value="reglement">✅ Règlement reçu</option>
+            <option value="rejet">❌ Rejet de bordereau</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg">
+        <label>Débiteur *</label>
+        <select id="sCreanceDebiteur" class="fi"></select>
+      </div>
+      <div class="fg2">
+        <div class="fg">
+          <label>Montant (FCFA) *</label>
+          <input type="number" id="sCreanceMontant" class="fi" min="1" placeholder="0">
+        </div>
+        <div class="fg">
+          <label>Référence</label>
+          <input type="text" id="sCreanceRef" class="fi" placeholder="N° bordereau, virement…">
+        </div>
+      </div>
+      <div class="fg">
+        <label>Note</label>
+        <textarea id="sCreanceNote" class="fi" rows="2" placeholder="Observations…"></textarea>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mSaisieCreance')">Annuler</button>
+      <button class="btn btn-green" onclick="sauvegarderCreance()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Historique global des mouvements créances -->
+<div class="modal-ov" id="mHistoriqueCreances">
+  <div class="modal" style="max-width:800px">
+    <div class="modal-hdr">
+      <div class="modal-title">📋 Historique des mouvements créances</div>
+      <button class="close-x" onclick="closeM('mHistoriqueCreances')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Débiteur</th><th>Type</th><th>Montant</th><th>Référence</th><th>Note</th><th></th></tr></thead>
+          <tbody id="histCreancesBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mHistoriqueCreances')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Détail d'un débiteur -->
+<div class="modal-ov" id="mDetailDebiteur">
+  <div class="modal" style="max-width:750px">
+    <div class="modal-hdr">
+      <div class="modal-title">💳 Détail débiteur</div>
+      <button class="close-x" onclick="closeM('mDetailDebiteur')">✕</button>
+    </div>
+    <div class="modal-body" id="detailDebiteurContent">
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mDetailDebiteur')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══ MODAUX RECOUVREMENT ══════════════════════════════════════════ -->
+
+<!-- Nouveau bordereau -->
+<div class="modal-ov" id="mNouveauBordereau">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">📋 Nouveau bordereau de facturation</div>
+      <button class="close-x" onclick="closeM('mNouveauBordereau')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="fg2">
+        <div class="fg">
+          <label>Débiteur *</label>
+          <select id="brdDebiteur" class="fi" onchange="onBrdDebiteurChange()"></select>
+        </div>
+        <div class="fg">
+          <label>Période *</label>
+          <input type="month" id="brdPeriode" class="fi" onchange="onBrdDebiteurChange()">
+        </div>
+      </div>
+      <div class="fg2">
+        <div class="fg">
+          <label>Référence (auto)</label>
+          <input type="text" id="brdRef" class="fi" placeholder="BRD-ATL-072026">
+        </div>
+        <div class="fg">
+          <label>Date d'émission</label>
+          <input type="date" id="brdDateEmission" class="fi">
+        </div>
+      </div>
+      <div class="fg">
+        <label>Montant facturé (FCFA) *</label>
+        <input type="number" id="brdMontant" class="fi" min="1" placeholder="0">
+      </div>
+      <div class="fg">
+        <label>Notes</label>
+        <textarea id="brdNotes" class="fi" rows="2" placeholder="Observations, n° lot de soins…"></textarea>
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mNouveauBordereau')">Annuler</button>
+      <button class="btn btn-green" onclick="sauvegarderBordereau()">Créer le bordereau</button>
+    </div>
+  </div>
+</div>
+
+<!-- Règlement d'un bordereau (chèque GASTP ou virement) -->
+<div class="modal-ov" id="mReglementBordereau">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-hdr">
+      <div class="modal-title">💰 Saisir un règlement</div>
+      <button class="close-x" onclick="closeM('mReglementBordereau')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="rglBrdId">
+      <div class="fg2">
+        <div class="fg">
+          <label>Débiteur</label>
+          <input type="text" id="rglDebiteur" class="fi" readonly style="opacity:.7">
+        </div>
+        <div class="fg">
+          <label>Réf. bordereau</label>
+          <input type="text" id="rglReference" class="fi" readonly style="opacity:.7">
+        </div>
+      </div>
+      <div class="fg2">
+        <div class="fg">
+          <label>Date réception *</label>
+          <input type="date" id="rglDate" class="fi">
+        </div>
+        <div class="fg">
+          <label>Montant réglé (FCFA) *</label>
+          <input type="number" id="rglMontant" class="fi" min="1">
+        </div>
+      </div>
+      <div class="fg2">
+        <div class="fg">
+          <label>Canal *</label>
+          <select id="rglCanal" class="fi">
+            <option value="cheque_gastp">📝 Chèque GASTP</option>
+            <option value="virement">🏦 Virement direct</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label>Statut *</label>
+          <select id="rglStatut" class="fi">
+            <option value="cheque_recu">Chèque reçu</option>
+            <option value="remis_banque">Remis en banque</option>
+            <option value="encaisse">Encaissé ✓</option>
+            <option value="virement">Virement reçu ✓</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg">
+        <label>Compte bancaire destinataire *</label>
+        <select id="rglCompte" class="fi"></select>
+      </div>
+      <div class="fg">
+        <label>Note</label>
+        <textarea id="rglNote" class="fi" rows="2" placeholder="N° chèque, référence virement…"></textarea>
+      </div>
+      <div style="background:var(--amber-dim);border-radius:8px;padding:10px 12px;font-size:.78rem;color:var(--amber);margin-top:8px">
+        ⚠ L'écriture bancaire n'est créée que si statut = <b>Encaissé</b> ou <b>Virement reçu</b>.<br>
+        Pour un chèque GASTP : saisir d'abord "Chèque reçu", puis "Encaisser" après compensation.
+      </div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mReglementBordereau')">Annuler</button>
+      <button class="btn btn-green" onclick="sauvegarderReglement()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
