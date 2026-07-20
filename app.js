@@ -5736,36 +5736,140 @@ async function importerXLSCreances() {
   try {
     const parsed = await parserXLSMediciel(file);
     if (parsed.lignes.length === 0) { toast('Aucune ligne trouvée dans le fichier', 'warn'); return; }
-
-    // Afficher la prévisualisation
-    const prevEl = document.getElementById('prevImportCreances');
-    if (prevEl) {
-      let html = `<div style="font-size:.8rem;color:var(--text2);margin-bottom:8px">📅 Date détectée : <b>${parsed.date}</b> — Total : <b>${fmt(parsed.total)} FCFA</b></div>`;
-      html += '<div class="tbl-wrap"><table><thead><tr><th>Client Mediciel</th><th>Montant</th><th>Débiteur PharmaCash</th></tr></thead><tbody>';
-      for (const l of parsed.lignes) {
-        const deb = matcherDebiteur(l.client);
-        const debNom = deb ? `<span style="color:var(--green)">${deb.sigle}</span>` :
-          `<span style="color:var(--red)">⚠ Non reconnu</span>`;
-        html += `<tr><td>${l.client}</td><td class="amt">${fmt(l.montant)}</td><td>${debNom}</td></tr>`;
-      }
-      html += '</tbody></table></div>';
-      html += `<button class="btn" style="margin-top:12px" onclick="validerImportCreances(${JSON.stringify(parsed).replace(/"/g,'&quot;')})">✅ Valider l'import</button>`;
-      prevEl.innerHTML = html;
-    }
+    // Stocker parsed pour que validerImportCreances y accède après créations à la volée
+    window._importEnCours = parsed;
+    _rafraichirPrevImport();
   } catch (e) {
     toast('Erreur lecture XLS : ' + e.message, 'error');
   }
 }
 window.importerXLSCreances = importerXLSCreances;
 
-async function validerImportCreances(parsed) {
+// Rafraîchit la prévisualisation (appelée aussi après création à la volée)
+function _rafraichirPrevImport() {
+  const parsed = window._importEnCours;
+  if (!parsed) return;
+  const prevEl = document.getElementById('prevImportCreances');
+  if (!prevEl) return;
+
+  const nonReconnus = parsed.lignes.filter(l => !matcherDebiteur(l.client));
+  let html = `<div style="font-size:.8rem;color:var(--text2);margin-bottom:8px">
+    📅 Date détectée : <b>${parsed.date}</b> — Total : <b>${fmt(parsed.total)} FCFA</b>
+    ${nonReconnus.length > 0
+      ? `<span style="color:var(--amber);margin-left:12px">⚠ ${nonReconnus.length} non reconnu(s)</span>`
+      : '<span style="color:var(--green);margin-left:12px">✓ Tous mappés</span>'}
+  </div>`;
+
+  html += '<div class="tbl-wrap"><table><thead><tr><th>Client Mediciel</th><th>Montant</th><th>Débiteur PharmaCash</th></tr></thead><tbody>';
+  for (const l of parsed.lignes) {
+    const deb = matcherDebiteur(l.client);
+    if (deb) {
+      html += `<tr>
+        <td>${l.client}</td>
+        <td class="amt">${fmt(l.montant)}</td>
+        <td><span style="color:var(--green)">${deb.sigle}</span></td>
+      </tr>`;
+    } else {
+      // Ligne non reconnue — mini-formulaire de création à la volée
+      const safeNom = l.client.replace(/'/g, "\'");
+      const safeId  = 'new_' + l.client.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+      html += `<tr id="row_${safeId}">
+        <td>${l.client}</td>
+        <td class="amt">${fmt(l.montant)}</td>
+        <td>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span style="color:var(--red);font-size:.78rem">⚠ Non reconnu</span>
+            <button class="btn btn-sm" style="background:var(--amber);color:#000"
+              onclick="ouvrirCreationVolee('${safeNom}','${safeId}')">+ Créer</button>
+          </div>
+          <div id="form_${safeId}" style="display:none;margin-top:6px;padding:8px;background:var(--surface2);border-radius:6px">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <input type="text" id="sigle_${safeId}" placeholder="Sigle" value="${l.client.split(' ')[0]}"
+                style="width:90px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--text);font-size:.78rem">
+              <select id="type_${safeId}"
+                style="background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--text);font-size:.78rem">
+                <option value="assurance_privee">Assurance privée</option>
+                <option value="mutuelle">Mutuelle</option>
+                <option value="organisme_public">Organisme public</option>
+                <option value="entreprise_ipm">Entreprise / IPM</option>
+                <option value="courtier">Courtier</option>
+                <option value="credit_interne">Crédit interne</option>
+              </select>
+              <input type="number" id="delai_${safeId}" value="90" min="1" max="365"
+                style="width:55px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px;color:var(--text);font-size:.78rem"
+                title="Délai de règlement (jours)">
+              <span style="font-size:.72rem;color:var(--text3)">j</span>
+              <button class="btn btn-sm btn-green" onclick="confirmerCreationVolee('${safeNom}','${safeId}')">✓ OK</button>
+              <button class="btn btn-sm btn-secondary" onclick="document.getElementById('form_${safeId}').style.display='none'">✕</button>
+            </div>
+          </div>
+        </td>
+      </tr>`;
+    }
+  }
+  html += '</tbody></table></div>';
+
+  const tousReconnus = parsed.lignes.every(l => matcherDebiteur(l.client));
+  html += `<button class="btn" style="margin-top:12px${!tousReconnus ? ';opacity:.5' : ''}"
+    ${!tousReconnus ? 'title="Résoudre d'abord les non reconnus"' : ''}
+    onclick="validerImportCreances()">✅ Valider l'import</button>`;
+  if (!tousReconnus) {
+    html += `<button class="btn btn-secondary" style="margin-top:12px;margin-left:8px"
+      onclick="validerImportCreances(true)">⏭ Importer sans les non reconnus</button>`;
+  }
+
+  prevEl.innerHTML = html;
+}
+window._rafraichirPrevImport = _rafraichirPrevImport;
+
+// Affiche le mini-formulaire de création à la volée
+function ouvrirCreationVolee(nomMediciel, safeId) {
+  const form = document.getElementById('form_' + safeId);
+  if (form) form.style.display = 'block';
+}
+window.ouvrirCreationVolee = ouvrirCreationVolee;
+
+// Crée le débiteur et re-mappe instantanément
+async function confirmerCreationVolee(nomMediciel, safeId) {
+  const sigle = document.getElementById('sigle_' + safeId)?.value?.trim()
+    || nomMediciel.split(' ')[0];
+  const type  = document.getElementById('type_'  + safeId)?.value || 'assurance_privee';
+  const delai = parseInt(document.getElementById('delai_' + safeId)?.value || '90');
+
+  const newDeb = {
+    id:          'deb_' + uid(),
+    nom:          nomMediciel,
+    sigle:        sigle.toUpperCase(),
+    type,
+    actif:        true,
+    pdv:          'PSRM',
+    delaiJours:   delai,
+    creePar:      currentUser?.nom || '',
+    ts:           Date.now()
+  };
+  debiteurs.push(newDeb);
+  await saveItem('debiteurs', newDeb);
+  saveLocal();
+  toast(`${newDeb.nom} créé ✓`, 'success');
+  // Rafraîchir la prévisualisation — la ligne passera au vert
+  _rafraichirPrevImport();
+}
+window.confirmerCreationVolee = confirmerCreationVolee;
+
+async function validerImportCreances(skipUnknown = false) {
+  const parsed = window._importEnCours;
   if (!parsed?.lignes?.length) return;
+  const nonReconnus = parsed.lignes.filter(l => !matcherDebiteur(l.client));
+  if (nonReconnus.length > 0 && !skipUnknown) {
+    toast(`${nonReconnus.length} débiteur(s) non reconnu(s) — crée-les ou clique "Importer sans"`, 'warn');
+    return;
+  }
   let ok = 0, skip = 0;
   for (const l of parsed.lignes) {
     const deb = matcherDebiteur(l.client);
     if (!deb) { skip++; continue; }
     const mvt = {
-      id: 'cre_' + uid(),
+      id:          'cre_' + uid(),
       debiteurId:   deb.id,
       debiteurNom:  deb.nom,
       date:         parsed.date,
@@ -5782,8 +5886,9 @@ async function validerImportCreances(parsed) {
     ok++;
   }
   saveLocal();
+  window._importEnCours = null;
   closeM('mImportCreances');
-  toast(`Import terminé : ${ok} vente(s) enregistrée(s)${skip > 0 ? `, ${skip} non reconnu(s)` : ''} ✓`, 'success');
+  toast(`Import terminé : ${ok} vente(s) enregistrée(s)${skip > 0 ? `, ${skip} ignorée(s)` : ''} ✓`, 'success');
   renderCreances();
   renderDashboard();
 }
