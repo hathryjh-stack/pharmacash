@@ -3044,10 +3044,14 @@ function renderRapport(){
     : [];
   const totMachine = clotF.reduce((s,c)=>s+(c.totalMachine||0),0);
 
-  // CA crédit (tiers payants) sur la période
+  // CA réel = comptant encaissé + ventes à crédit
   const fluxCre = CreanceModule.fluxGlobal(debut, fin);
   const totCredit = fluxCre.ventes;
   const totReglCreances = fluxCre.reglements;
+  const totRejets = fluxCre.rejets;
+  const caReel = totR + totCredit;
+  const tauxRecouvrement = totCredit > 0 ? Math.round(totReglCreances / totCredit * 100) : 100;
+  const encoursPeriode = totCredit - totReglCreances - totRejets;
   // Dettes fournisseurs (snapshot instantané, pas filtré par période)
   const totDettesFourn = totalDettesFournisseurs();
   const fluxFourn = fluxPaiementsFourn(debut, fin);
@@ -3061,7 +3065,9 @@ function renderRapport(){
       <div class="stat-card purple"><div class="stat-lbl">Confirmés</div><div class="stat-val purple">${fmt(totC)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card amber"><div class="stat-lbl">En attente</div><div class="stat-val amber">${fmt(totA)}</div><div class="stat-sub">${DEVISE}</div></div>
       <div class="stat-card ${ecart>=0?'green':'red'}"><div class="stat-lbl">Écart CA/Versé</div><div class="stat-val ${ecart>=0?'green':'red'}">${ecart>=0?'+':''}${fmt(ecart)}</div><div class="stat-sub">${DEVISE}</div></div>
-      <div class="stat-card amber"><div class="stat-lbl">💳 CA Crédit (tiers)</div><div class="stat-val amber">${fmt(totCredit)}</div><div class="stat-sub">${DEVISE} — ventes à crédit période</div></div>
+      <div class="stat-card cyan"><div class="stat-lbl">🏆 CA Réel total</div><div class="stat-val" style="color:var(--cyan)">${fmt(caReel)}</div><div class="stat-sub">${DEVISE} — comptant + crédit</div></div>
+      <div class="stat-card amber"><div class="stat-lbl">💳 CA Crédit (tiers)</div><div class="stat-val amber">${fmt(totCredit)}</div><div class="stat-sub">${DEVISE} — ${tauxRecouvrement}% recouvré</div></div>
+      <div class="stat-card ${encoursPeriode>0?'amber':'green'}"><div class="stat-lbl">⏳ Créances en cours</div><div class="stat-val ${encoursPeriode>0?'amber':'green'}">${fmt(encoursPeriode)}</div><div class="stat-sub">${DEVISE} — à recouvrer</div></div>
       <div class="stat-card red"><div class="stat-lbl">🏭 Dettes fournisseurs</div><div class="stat-val red">${fmt(totDettesFourn)}</div><div class="stat-sub">${DEVISE} — factures en attente</div></div>
       <div class="stat-card green"><div class="stat-lbl">🏭 Payé fournisseurs</div><div class="stat-val green">${fmt(fluxFourn.payes)}</div><div class="stat-sub">${DEVISE} — période</div></div>
       <div class="stat-card green"><div class="stat-lbl">✓ Disponible banques</div><div class="stat-val green">${fmt(totalDispo())}</div><div class="stat-sub">${DEVISE} — global</div></div>
@@ -5681,6 +5687,8 @@ function renderCreances() {
         <button class="btn btn-sm" onclick="ouvrirImportXLSCreances()">📥 Importer XLS Mediciel</button>
         <button class="btn btn-sm btn-secondary" onclick="ouvrirSaisieCreance()">✏️ Saisie manuelle</button>
         <button class="btn btn-sm btn-secondary" onclick="ouvrirHistoriqueCreances()">📋 Historique</button>
+        <button class="btn btn-sm" style="background:var(--cyan);color:#000" onclick="ouvrirArreteMensuel()">📋 Arrêté mensuel</button>
+        <button class="btn btn-sm btn-secondary" style="border-color:var(--red);color:var(--red)" onclick="ouvrirPurgePeriode()">🗑 Purger période</button>
       </div>
     </div>
 
@@ -5978,9 +5986,12 @@ function ouvrirHistoriqueCreances() {
       <td class="amt ${c.type === 'vente' ? 'pos' : 'neg'}">${fmt(c.montant)}</td>
       <td style="font-size:.75rem">${c.reference || '—'}</td>
       <td style="font-size:.75rem">${c.note || '—'}</td>
-      <td><button class="btn btn-sm btn-secondary" onclick="supprimerCreance('${c.id}')">✕</button></td>
+      <td style="display:flex;gap:4px">
+        <button class="btn btn-sm btn-secondary" onclick="ouvrirModifierCreance('${c.id}')">✏</button>
+        <button class="btn btn-sm btn-secondary" onclick="supprimerCreance('${c.id}')">✕</button>
+      </td>
     </tr>`;
-  }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text3)">Aucun mouvement</td></tr>';
+  }).join('') || '<tr><td colspan="8" style="text-align:center;color:var(--text3)">Aucun mouvement</td></tr>';
   openM('mHistoriqueCreances');
 }
 window.ouvrirHistoriqueCreances = ouvrirHistoriqueCreances;
@@ -5995,6 +6006,218 @@ async function supprimerCreance(id) {
   renderDashboard();
 }
 window.supprimerCreance = supprimerCreance;
+// ── Modifier une créance existante ───────────────────────────────────
+function ouvrirModifierCreance(id) {
+  const c = creances.find(x => x.id === id);
+  if (!c) return;
+
+  // Réutilise le modal saisie manuelle en mode édition
+  const sel = document.getElementById('sCreanceDebiteur');
+  if (sel) {
+    sel.innerHTML = debiteurs.filter(d => d.actif !== false)
+      .sort((a, b) => a.nom.localeCompare(b.nom))
+      .map(d => `<option value="${d.id}" ${d.id === c.debiteurId ? 'selected' : ''}>${d.nom}</option>`)
+      .join('');
+  }
+  document.getElementById('sCreanceDate').value    = c.date;
+  document.getElementById('sCreanceType').value    = c.type;
+  document.getElementById('sCreanceMontant').value = c.montant;
+  document.getElementById('sCreanceRef').value     = c.reference || '';
+  document.getElementById('sCreanceNote').value    = c.note || '';
+
+  // Stocker l'ID en édition sur le bouton valider
+  const btn = document.querySelector('#mSaisieCreance .modal-ftr .btn-green');
+  if (btn) {
+    btn.setAttribute('data-edit-id', id);
+    btn.textContent = 'Modifier';
+    btn.onclick = () => sauvegarderCreance(id);
+  }
+  openM('mSaisieCreance');
+}
+window.ouvrirModifierCreance = ouvrirModifierCreance;
+
+// Surcharge sauvegarderCreance pour gérer l'édition
+const _sauvegarderCreanceOrig = sauvegarderCreance;
+async function sauvegarderCreance(editId = null) {
+  const debiteurId = document.getElementById('sCreanceDebiteur')?.value;
+  const type       = document.getElementById('sCreanceType')?.value;
+  const date       = document.getElementById('sCreanceDate')?.value;
+  const montant    = parseFloat(document.getElementById('sCreanceMontant')?.value || '0');
+  const reference  = document.getElementById('sCreanceRef')?.value?.trim() || '';
+  const note       = document.getElementById('sCreanceNote')?.value?.trim() || '';
+
+  if (!debiteurId) { toast('Sélectionne un débiteur', 'warn'); return; }
+  if (montant <= 0) { toast('Montant invalide (doit être > 0)', 'warn'); return; }
+  if (!date)        { toast('Date obligatoire', 'warn'); return; }
+
+  const deb = debiteurs.find(d => d.id === debiteurId);
+
+  if (editId) {
+    // Mode édition — mettre à jour le document existant
+    const idx = creances.findIndex(c => c.id === editId);
+    if (idx === -1) { toast('Créance introuvable', 'error'); return; }
+    creances[idx] = { ...creances[idx], debiteurId, debiteurNom: deb?.nom || debiteurId,
+      date, type, montant, reference, note, modifiePar: currentUser?.nom || '', modifieTs: Date.now() };
+    await saveItem('creances', creances[idx]);
+    // Remettre le bouton en mode création
+    const btn = document.querySelector('#mSaisieCreance .modal-ftr .btn-green');
+    if (btn) { btn.textContent = 'Enregistrer'; btn.onclick = () => sauvegarderCreance(); }
+    closeM('mSaisieCreance');
+    toast('Créance modifiée ✓', 'success');
+  } else {
+    // Mode création
+    const mvt = {
+      id: 'cre_' + uid(), debiteurId, debiteurNom: deb?.nom || debiteurId,
+      date, ts: Date.now(), type, montant, reference,
+      caissiere: currentUser?.nom || '', pdv: 'PSRM', note
+    };
+    creances.push(mvt);
+    await saveItem('creances', mvt);
+    closeM('mSaisieCreance');
+    toast(`${type === 'vente' ? 'Vente crédit' : type === 'reglement' ? 'Règlement' : 'Rejet'} enregistré ✓`, 'success');
+  }
+  saveLocal();
+  renderCreances();
+  renderDashboard();
+}
+window.sauvegarderCreance = sauvegarderCreance;
+
+// ── Arrêté mensuel — crée les bordereaux pour tous les débiteurs ─────
+function ouvrirArreteMensuel() {
+  const mois = today().slice(0, 7);
+  const recap = CreanceModule.recapParDebiteur(mois + '-01', today());
+  const avecEncours = recap.filter(d => d.ventes > 0);
+
+  if (avecEncours.length === 0) {
+    toast('Aucune vente à crédit ce mois — rien à arrêter', 'warn');
+    return;
+  }
+
+  const el = document.getElementById('arreteMensuelContent');
+  if (!el) return;
+
+  el.innerHTML = `
+    <div style="font-size:.85rem;color:var(--text2);margin-bottom:12px">
+      Période : <b>${mois}</b> — ${avecEncours.length} débiteur(s) avec ventes
+    </div>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th>Débiteur</th><th>Ventes mois</th><th>Référence bordereau</th><th>Inclure</th></tr></thead>
+      <tbody>
+        ${avecEncours.map(d => {
+          const ref = genRefBordereau(d.id, mois);
+          const dejaBrd = bordereaux.find(b => b.debiteurId === d.id && b.periode === mois);
+          return `<tr>
+            <td><b>${d.sigle}</b><div style="font-size:.7rem;color:var(--text3)">${d.nom}</div></td>
+            <td class="amt">${fmt(d.ventes)}</td>
+            <td style="font-size:.78rem">${dejaBrd
+              ? `<span style="color:var(--green)">${dejaBrd.reference} (existant)</span>`
+              : ref}</td>
+            <td><input type="checkbox" id="chk_arr_${d.id}"
+              ${dejaBrd ? 'disabled' : 'checked'}
+              style="width:16px;height:16px"></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>
+    <div style="margin-top:12px;font-size:.78rem;color:var(--text3)">
+      Les bordereaux existants ne seront pas dupliqués.
+    </div>`;
+
+  // Stocker les données pour la validation
+  window._arreteDonnees = { mois, avecEncours };
+  openM('mArreteMensuel');
+}
+window.ouvrirArreteMensuel = ouvrirArreteMensuel;
+
+async function validerArreteMensuel() {
+  const { mois, avecEncours } = window._arreteDonnees || {};
+  if (!avecEncours) return;
+
+  let crees = 0, ignores = 0;
+  for (const d of avecEncours) {
+    const chk = document.getElementById('chk_arr_' + d.id);
+    if (!chk || !chk.checked || chk.disabled) { ignores++; continue; }
+
+    const brd = {
+      id:             'brd_' + uid(),
+      debiteurId:     d.id,
+      debiteurNom:    d.nom,
+      periode:        mois,
+      reference:      genRefBordereau(d.id, mois),
+      montant:        d.ventes,
+      montantRegle:   0,
+      dateEmission:   today(),
+      dateRecouvrement: '',
+      dateReglement:  '',
+      statut:         'emis',
+      notes:          `Arrêté mensuel ${mois}`,
+      ts:             Date.now(),
+      creePar:        currentUser?.nom || ''
+    };
+    bordereaux.push(brd);
+    await saveItem('bordereaux', brd);
+    crees++;
+  }
+  saveLocal();
+  closeM('mArreteMensuel');
+  toast(`Arrêté ${mois} : ${crees} bordereau(x) créé(s), ${ignores} ignoré(s) ✓`, 'success');
+  renderCreances();
+}
+window.validerArreteMensuel = validerArreteMensuel;
+
+// ── Purger une période ───────────────────────────────────────────────
+function ouvrirPurgePeriode() {
+  const mois = today().slice(0, 7);
+  document.getElementById('purgeDebut').value = mois + '-01';
+  document.getElementById('purgeFin').value   = today();
+  document.getElementById('purgePreview').innerHTML = '';
+  openM('mPurgePeriode');
+}
+window.ouvrirPurgePeriode = ouvrirPurgePeriode;
+
+function previewPurge() {
+  const debut = document.getElementById('purgeDebut')?.value;
+  const fin   = document.getElementById('purgeFin')?.value;
+  if (!debut || !fin) return;
+
+  const aSupprimer = creances.filter(c => c.date >= debut && c.date <= fin);
+  const brdSuppr   = bordereaux.filter(b => b.periode >= debut.slice(0,7) && b.periode <= fin.slice(0,7));
+
+  document.getElementById('purgePreview').innerHTML = `
+    <div style="background:var(--red-dim,rgba(239,68,68,.1));border-radius:8px;padding:10px 12px;margin-top:10px">
+      <div style="color:var(--red);font-weight:700;margin-bottom:6px">⚠ Cette action est irréversible</div>
+      <div style="font-size:.82rem">
+        • <b>${aSupprimer.length}</b> mouvement(s) créances (${debut} → ${fin})<br>
+        • <b>${brdSuppr.length}</b> bordereau(x) sur cette période
+      </div>
+    </div>`;
+}
+window.previewPurge = previewPurge;
+
+async function validerPurge() {
+  const debut = document.getElementById('purgeDebut')?.value;
+  const fin   = document.getElementById('purgeFin')?.value;
+  if (!debut || !fin) return;
+  if (!confirm(`Supprimer DÉFINITIVEMENT toutes les créances du ${debut} au ${fin} ?`)) return;
+
+  const aSupprimer = creances.filter(c => c.date >= debut && c.date <= fin);
+  const brdSuppr   = bordereaux.filter(b => b.periode >= debut.slice(0,7) && b.periode <= fin.slice(0,7));
+  let nb = 0;
+
+  for (const c of aSupprimer) { await delItem('creances', c.id); nb++; }
+  for (const b of brdSuppr)   { await delItem('bordereaux', b.id); nb++; }
+
+  creances   = creances.filter(c => !(c.date >= debut && c.date <= fin));
+  bordereaux = bordereaux.filter(b => !(b.periode >= debut.slice(0,7) && b.periode <= fin.slice(0,7)));
+  saveLocal();
+  closeM('mPurgePeriode');
+  toast(`${nb} document(s) supprimé(s) ✓`, 'success');
+  renderCreances();
+  renderDashboard();
+}
+window.validerPurge = validerPurge;
+
+
 
 // ── Détail d'un débiteur ─────────────────────────────────────────────
 function ouvrirDetailDebiteur(debiteurId) {

@@ -432,6 +432,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <table>
               <thead>
                 <tr>
+                  <th>#</th>
                   <th>Compte</th>
                   <th>Statut</th>
                   <th>Solde ouverture (RAN)</th>
@@ -976,7 +977,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
     <div class="modal-body">
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Débiteur</th><th>Type</th><th>Montant</th><th>Référence</th><th>Note</th><th></th></tr></thead>
+          <thead><tr><th>Date</th><th>Débiteur</th><th>Type</th><th>Montant</th><th>Référence</th><th>Note</th><th>Actions</th></tr></thead>
           <tbody id="histCreancesBody"></tbody>
         </table>
       </div>
@@ -1296,6 +1297,56 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
     </div>
     <div class="modal-ftr">
       <button class="btn btn-ghost" onclick="closeM('mGestionFournisseurs')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══ MODAUX CHANTIER 7 ════════════════════════════════════════════ -->
+
+<!-- Arrêté mensuel -->
+<div class="modal-ov" id="mArreteMensuel">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-hdr">
+      <div class="modal-title">📋 Arrêté mensuel — Création des bordereaux</div>
+      <button class="close-x" onclick="closeM('mArreteMensuel')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="arreteMensuelContent"></div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mArreteMensuel')">Annuler</button>
+      <button class="btn btn-green" onclick="validerArreteMensuel()">✅ Créer les bordereaux</button>
+    </div>
+  </div>
+</div>
+
+<!-- Purger une période -->
+<div class="modal-ov" id="mPurgePeriode">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">🗑 Purger les créances d'une période</div>
+      <button class="close-x" onclick="closeM('mPurgePeriode')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--amber-dim);border-radius:8px;padding:10px 12px;font-size:.8rem;color:var(--amber);margin-bottom:14px">
+        ⚠ Cette opération supprime définitivement tous les mouvements créances et bordereaux de la période sélectionnée. À utiliser uniquement pour supprimer des données de test avant le démarrage réel.
+      </div>
+      <div class="fg2">
+        <div class="fg">
+          <label>Du *</label>
+          <input type="date" id="purgeDebut" class="fi" onchange="previewPurge()">
+        </div>
+        <div class="fg">
+          <label>Au *</label>
+          <input type="date" id="purgeFin" class="fi" onchange="previewPurge()">
+        </div>
+      </div>
+      <div id="purgePreview"></div>
+    </div>
+    <div class="modal-ftr">
+      <button class="btn btn-ghost" onclick="closeM('mPurgePeriode')">Annuler</button>
+      <button class="btn" style="background:var(--red);color:#fff" onclick="validerPurge()">🗑 Supprimer définitivement</button>
     </div>
   </div>
 </div>
