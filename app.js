@@ -5934,41 +5934,7 @@ function ouvrirSaisieCreance(debiteurId = '') {
 }
 window.ouvrirSaisieCreance = ouvrirSaisieCreance;
 
-async function sauvegarderCreance() {
-  const debiteurId = document.getElementById('sCreanceDebiteur')?.value;
-  const type       = document.getElementById('sCreanceType')?.value;
-  const date       = document.getElementById('sCreanceDate')?.value;
-  const montant    = parseFloat(document.getElementById('sCreanceMontant')?.value || '0');
-  const reference  = document.getElementById('sCreanceRef')?.value?.trim() || '';
-  const note       = document.getElementById('sCreanceNote')?.value?.trim() || '';
-
-  if (!debiteurId) { toast('Sélectionne un débiteur', 'warn'); return; }
-  if (montant <= 0) { toast('Montant invalide (doit être > 0)', 'warn'); return; }
-  if (!date)        { toast('Date obligatoire', 'warn'); return; }
-
-  const deb = debiteurs.find(d => d.id === debiteurId);
-  const mvt = {
-    id: 'cre_' + uid(),
-    debiteurId,
-    debiteurNom:  deb?.nom || debiteurId,
-    date,
-    ts:           Date.now(),
-    type,
-    montant,
-    reference,
-    caissiere:    currentUser?.nom || '',
-    pdv:          'PSRM',
-    note
-  };
-  creances.push(mvt);
-  await saveItem('creances', mvt);
-  saveLocal();
-  closeM('mSaisieCreance');
-  toast(`${type === 'vente' ? 'Vente crédit' : type === 'reglement' ? 'Règlement' : 'Rejet'} enregistré ✓`, 'success');
-  renderCreances();
-  renderDashboard();
-}
-window.sauvegarderCreance = sauvegarderCreance;
+// sauvegarderCreance — voir version enrichie ci-dessous (chantier 7)
 
 // ── Historique complet des mouvements créances ───────────────────────
 function ouvrirHistoriqueCreances() {
@@ -6036,8 +6002,6 @@ function ouvrirModifierCreance(id) {
 }
 window.ouvrirModifierCreance = ouvrirModifierCreance;
 
-// Surcharge sauvegarderCreance pour gérer l'édition
-const _sauvegarderCreanceOrig = sauvegarderCreance;
 async function sauvegarderCreance(editId = null) {
   const debiteurId = document.getElementById('sCreanceDebiteur')?.value;
   const type       = document.getElementById('sCreanceType')?.value;
