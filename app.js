@@ -1670,12 +1670,26 @@ function renderLignesVersement(){
         </div>
         <div class="fg"><label>${isEspPDV?'Vers caisse centrale':isBqPDV?'Vers banque centrale':'Vers compte'} *</label>
           <select onchange="updateLigneCompte(${i},this.value)">
-            ${(isEspPDV
-              ?comptes.filter(c=>c.cat==='caisse'&&c.actif!==false)
-              :isBqPDV
-              ?comptes.filter(c=>c.cat==='banque'&&c.actif!==false)
-              :comptes.filter(c=>c.actif!==false)
-            ).map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
+            ${(()=>{
+              // Filtre des comptes selon le type de versement ET le PDV sélectionné
+              const pdvSel = document.getElementById('mVPDV2')?.value || '';
+              if(isEspPDV)
+                return comptes.filter(c=>c.cat==='caisse'&&c.actif!==false&&!c.pdv);
+              if(isBqPDV)
+                return comptes.filter(c=>c.cat==='banque'&&c.actif!==false&&!c.pdv);
+              // Pour les Mobile Money : si PDV dépôt → ses comptes MM uniquement
+              // Si PDV centrale ou pas de PDV → tous les comptes MM centraux
+              const pdvObj = pdvs.find(p=>p.id===pdvSel);
+              const estDepot = pdvObj && pdvObj.type !== 'central' && pdvObj.type !== 'centrale';
+              if(estDepot && pdvSel){
+                // Comptes rattachés à ce PDV
+                const cptsPDV = comptes.filter(c=>c.pdv===pdvSel&&c.actif!==false&&c.cat==='mobile_money');
+                if(cptsPDV.length>0) return cptsPDV;
+                // Fallback si aucun compte MM rattaché à ce PDV → alerte
+              }
+              // Centrale ou dépôt sans compte MM propre → comptes centraux uniquement
+              return comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money'&&!c.pdv);
+            })().map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -1790,8 +1804,37 @@ async function saveVersements(){
 window.saveVersements=saveVersements;
 
 function onVPDVChange(){
-  const p=pdvs.find(x=>x.id===document.getElementById('mVPDV2')?.value);
+  const pdvId = document.getElementById('mVPDV2')?.value;
+  const p = pdvs.find(x=>x.id===pdvId);
   if(p&&document.getElementById('mVFreq2'))document.getElementById('mVFreq2').value=p.freq||'quotidien';
+
+  // Vérifier si le PDV dépôt a des comptes MM rattachés
+  if(pdvId){
+    const pdvObj = pdvs.find(pp=>pp.id===pdvId);
+    const estDepot = pdvObj && pdvObj.type !== 'central' && pdvObj.type !== 'centrale';
+    if(estDepot){
+      const cptsMM = comptes.filter(c=>c.pdv===pdvId&&c.actif!==false&&c.cat==='mobile_money');
+      const alertEl = document.getElementById('alerteComptePDV');
+      if(alertEl){
+        if(cptsMM.length===0){
+          alertEl.innerHTML = `<div style="background:var(--red-dim);border-radius:6px;padding:8px 12px;font-size:.78rem;color:var(--red);margin-top:6px">
+            ⚠️ Aucun compte Mobile Money rattaché au PDV <b>${pdvObj.nom}</b>.
+            Configure les comptes de ce PDV dans <b>Administration → Configuration</b>.
+          </div>`;
+        } else {
+          alertEl.innerHTML = `<div style="background:var(--green-dim);border-radius:6px;padding:6px 12px;font-size:.75rem;color:var(--green);margin-top:4px">
+            ✓ ${cptsMM.length} compte(s) MM — versements filtrés sur ce PDV
+          </div>`;
+        }
+      }
+    } else {
+      const alertEl = document.getElementById('alerteComptePDV');
+      if(alertEl) alertEl.innerHTML = '';
+    }
+  }
+
+  // Rafraîchir les lignes de versement avec les comptes filtrés
+  renderLignesVersement();
 }
 window.onVPDVChange=onVPDVChange;
 
