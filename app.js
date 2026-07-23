@@ -1671,24 +1671,21 @@ function renderLignesVersement(){
         <div class="fg"><label>${isEspPDV?'Vers caisse centrale':isBqPDV?'Vers banque centrale':'Vers compte'} *</label>
           <select onchange="updateLigneCompte(${i},this.value)">
             ${(()=>{
-              // Filtre des comptes selon le type de versement ET le PDV sélectionné
+              // Filtre des comptes selon le type de versement
+              // Pour les MM : proposer les comptes centraux de l'opérateur correspondant
+              // Le compte par défaut du PDV est présélectionné automatiquement
               const pdvSel = document.getElementById('mVPDV2')?.value || '';
-              if(isEspPDV)
-                return comptes.filter(c=>c.cat==='caisse'&&c.actif!==false&&!c.pdv);
-              if(isBqPDV)
-                return comptes.filter(c=>c.cat==='banque'&&c.actif!==false&&!c.pdv);
-              // Pour les Mobile Money : si PDV dépôt → ses comptes MM uniquement
-              // Si PDV centrale ou pas de PDV → tous les comptes MM centraux
               const pdvObj = pdvs.find(p=>p.id===pdvSel);
-              const estDepot = pdvObj && pdvObj.type !== 'central' && pdvObj.type !== 'centrale';
-              if(estDepot && pdvSel){
-                // Comptes rattachés à ce PDV
-                const cptsPDV = comptes.filter(c=>c.pdv===pdvSel&&c.actif!==false&&c.cat==='mobile_money');
-                if(cptsPDV.length>0) return cptsPDV;
-                // Fallback si aucun compte MM rattaché à ce PDV → alerte
-              }
-              // Centrale ou dépôt sans compte MM propre → comptes centraux uniquement
-              return comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money'&&!c.pdv);
+              const opType = l.type; // 'OM','MTN','WAVE','MOOV'
+              if(isEspPDV)
+                return comptes.filter(c=>c.cat==='caisse'&&c.actif!==false);
+              if(isBqPDV)
+                return comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
+              // MM : filtrer par opérateur correspondant au type sélectionné
+              const cptsOp = comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money'&&c.op===opType);
+              if(cptsOp.length>0) return cptsOp;
+              // Fallback : tous comptes MM si opérateur non trouvé
+              return comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money');
             })().map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
         </div>
@@ -1808,32 +1805,27 @@ function onVPDVChange(){
   const p = pdvs.find(x=>x.id===pdvId);
   if(p&&document.getElementById('mVFreq2'))document.getElementById('mVFreq2').value=p.freq||'quotidien';
 
-  // Vérifier si le PDV dépôt a des comptes MM rattachés
-  if(pdvId){
-    const pdvObj = pdvs.find(pp=>pp.id===pdvId);
-    const estDepot = pdvObj && pdvObj.type !== 'central' && pdvObj.type !== 'centrale';
-    if(estDepot){
-      const cptsMM = comptes.filter(c=>c.pdv===pdvId&&c.actif!==false&&c.cat==='mobile_money');
-      const alertEl = document.getElementById('alerteComptePDV');
-      if(alertEl){
-        if(cptsMM.length===0){
-          alertEl.innerHTML = `<div style="background:var(--red-dim);border-radius:6px;padding:8px 12px;font-size:.78rem;color:var(--red);margin-top:6px">
-            ⚠️ Aucun compte Mobile Money rattaché au PDV <b>${pdvObj.nom}</b>.
-            Configure les comptes de ce PDV dans <b>Administration → Configuration</b>.
-          </div>`;
-        } else {
-          alertEl.innerHTML = `<div style="background:var(--green-dim);border-radius:6px;padding:6px 12px;font-size:.75rem;color:var(--green);margin-top:4px">
-            ✓ ${cptsMM.length} compte(s) MM — versements filtrés sur ce PDV
-          </div>`;
-        }
+  // Présélectionner le compte défaut du PDV sur la première ligne de versement
+  if(pdvId && p?.compteDefaut && lignesVersement.length>0){
+    const cptDef = comptes.find(c=>c.id===p.compteDefaut&&c.actif!==false);
+    if(cptDef){
+      // Adapter le type de la ligne au compte défaut
+      lignesVersement[0].compte = cptDef.id;
+      if(cptDef.op && ['OM','MTN','WAVE','MOOV'].includes(cptDef.op)){
+        lignesVersement[0].type = cptDef.op;
       }
-    } else {
+      // Afficher info compte défaut
       const alertEl = document.getElementById('alerteComptePDV');
-      if(alertEl) alertEl.innerHTML = '';
+      if(alertEl) alertEl.innerHTML = `<div style="background:var(--green-dim);border-radius:6px;padding:5px 10px;font-size:.73rem;color:var(--green);margin-top:4px">
+        ✓ Compte défaut : <b>${cptDef.nom}</b>
+      </div>`;
     }
+  } else {
+    const alertEl = document.getElementById('alerteComptePDV');
+    if(alertEl) alertEl.innerHTML = '';
   }
 
-  // Rafraîchir les lignes de versement avec les comptes filtrés
+  // Rafraîchir les lignes de versement
   renderLignesVersement();
 }
 window.onVPDVChange=onVPDVChange;
