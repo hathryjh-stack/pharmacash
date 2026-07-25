@@ -1671,21 +1671,37 @@ function renderLignesVersement(){
         <div class="fg"><label>${isEspPDV?'Vers caisse centrale':isBqPDV?'Vers banque centrale':'Vers compte'} *</label>
           <select onchange="updateLigneCompte(${i},this.value)">
             ${(()=>{
-              if(isEspPDV) return comptes.filter(c=>c.cat==='caisse'&&c.actif!==false);
-              if(isBqPDV)  return comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
-              // MM : filtrer par opérateur (OM/MTN/WAVE/MOOV) si le champ op existe
+              // ── Logique métier versement PDV ─────────────────────────────
+              // Flux : MM/Caisse dépôt → MM Centrale (même opérateur) ou Caisse Principale
+              // Règle : VERS COMPTE ne doit afficher que les comptes de réception autorisés
+              //   - Pour type MM (OM/MTN/WAVE/MOOV) : uniquement le compte central (tetePont=true)
+              //     du MÊME opérateur → pas les MM d'autres dépôts, pas les autres opérateurs
+              //   - Pour ESPECES_PDV : uniquement la Caisse Principale (tetePont/centrale)
+              //   - Pour BANQUE_PDV  : comptes bancaires uniquement (transferts)
+
               const opType = l.type;
               const pdvSel = document.getElementById('mVPDV2')?.value||'';
-              const pdvObj = pdvs.find(p=>p.id===pdvSel);
-              // Si le PDV a un compte défaut, le présélectionner
-              const cptDefPDV = pdvObj?.compteDefaut
-                ? comptes.find(c=>c.id===pdvObj.compteDefaut&&c.actif!==false) : null;
-              // Comptes MM de l'opérateur sélectionné
-              const cptsOp = comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money'
-                &&(c.op===opType||(c.op||'').toLowerCase()===opType.toLowerCase()));
-              if(cptsOp.length>0) return cptsOp;
-              // Fallback : tous comptes MM actifs
-              return comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money');
+
+              if(isEspPDV){
+                // Espèces dépôt → Caisse Principale uniquement
+                return comptes.filter(c=>c.cat==='caisse'&&c.actif!==false&&(c.tetePont||!c.pdv));
+              }
+              if(isBqPDV){
+                // Virement → comptes bancaires
+                return comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
+              }
+
+              // MM → compte central (tetePont=true) du même opérateur UNIQUEMENT
+              // Un compte central est : tetePont=true OU pas de pdv rattaché (compte global)
+              const cptsCentrales = comptes.filter(c=>
+                c.actif!==false &&
+                c.cat==='mobile_money' &&
+                c.op===opType &&
+                (c.tetePont===true || !c.pdv)   // centrale = tetePont ou sans pdv
+              );
+              if(cptsCentrales.length>0) return cptsCentrales;
+              // Fallback : tous MM du même opérateur si pas de centrale identifiée
+              return comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money'&&c.op===opType);
             })().map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
         </div>
