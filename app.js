@@ -2028,8 +2028,14 @@ function openCaisseModal(id){
   const pdvP=pdvs.find(p=>p.type==='principale');
   const caisseOpts=comptes.filter(c=>c.cat==='caisse'&&c.actif!==false)
     .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
-  const mmOpts=(op)=>comptes.filter(c=>c.actif!==false)
-    .map(c=>{
+  const mmOpts=(op)=>comptes.filter(c=>
+      c.actif!==false &&
+      c.cat==='mobile_money' &&
+      c.op===op &&
+      // Clôture PSRM : uniquement comptes MM de la PSRM (tetePont) ou sans pdv rattaché
+      // Les comptes MM des dépôts (c.pdv !== null && !c.tetePont) sont exclus
+      (c.tetePont===true || !c.pdv)
+    ).map(c=>{
       const label=c.tetePont?`${c.nom} ⭐ Centrale`:c.nom;
       return`<option value="${c.id}">${label}</option>`;
     }).join('');
@@ -2048,23 +2054,23 @@ function openCaisseModal(id){
     sel.innerHTML=mmOpts(op);
     // Priorité 1 : compte par défaut PDV si opérateur correspond
     const cptDef=pdvP?.compteDefaut?comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===op&&c.actif!==false):null;
-    // Priorité 2 : compte dont le nom contient un mot-clé du PDV (non tête de pont)
-    const nomPDV=(pdvP?.nom||'').toLowerCase();
-    const motsCles=nomPDV.split(/\s+/).filter(m=>m.length>3);
-    const cptNomPDV=comptes.find(c=>c.op===op&&c.actif!==false&&!c.tetePont&&motsCles.some(mot=>c.nom.toLowerCase().includes(mot)));
-    // Priorité 3 : n'importe quel compte MM non tête de pont
-    const local=comptes.find(c=>c.op===op&&c.actif!==false&&!c.tetePont);
-    // Priorité 4 : tête de pont en dernier recours
-    const centrale=comptes.find(c=>c.op===op&&c.actif!==false&&c.tetePont);
-    const best=(cptDef?.id)||(cptNomPDV?.id)||(local?.id)||(centrale?.id)||'';
+    // Trouver le PDV PSRM pour identifier ses comptes MM
+    const pdvPSRM = pdvs.find(p=>p.type==='principale');
+    // Priorité 1 : compte MM rattaché au PDV PSRM (c.pdv === pdvPSRM.id)
+    const cptPDV = pdvPSRM ? comptes.find(c=>c.op===op&&c.actif!==false&&c.pdv===pdvPSRM.id) : null;
+    // Priorité 2 : compte MM sans pdv rattaché et non tetePont (ex: Orange Money — PSRM)
+    const cptPSRM = comptes.find(c=>c.op===op&&c.actif!==false&&!c.pdv&&!c.tetePont);
+    // Priorité 3 : tête de pont en dernier recours seulement
+    const centrale = comptes.find(c=>c.op===op&&c.actif!==false&&c.tetePont);
+    const best = (cptPDV?.id)||(cptPSRM?.id)||(centrale?.id)||'';
     if(best)sel.value=best;
-    // Alerte visuelle si on tombe sur une tête de pont
+    // Alerte visuelle si on tombe sur une tête de pont (pas idéal)
     const cptChoisi=comptes.find(c=>c.id===best);
     if(cptChoisi?.tetePont){
       sel.style.border='1px solid var(--amber)';
-      sel.title=`⚠ Tête de pont sélectionnée — créez un compte "${op} — ${pdvP?.nom||'PDV'}" pour éviter cela`;
+      sel.title='⚠ Compte central sélectionné — compte PSRM propre introuvable pour cet opérateur';
     } else {
-      sel.style.border='';sel.title='';
+      sel.style.border='2px solid var(--green)';sel.title='✓ Compte PSRM';
     }
   }
   openM('mCaisse');
