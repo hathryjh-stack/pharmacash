@@ -1675,36 +1675,34 @@ function renderLignesVersement(){
           <select onchange="updateLigneCompte(${i},this.value)">
             ${(()=>{
               // ── Logique métier versement PDV ─────────────────────────────
-              // Flux : MM/Caisse dépôt → MM Centrale (même opérateur) ou Caisse Principale
-              // Règle : VERS COMPTE ne doit afficher que les comptes de réception autorisés
-              //   - Pour type MM (OM/MTN/WAVE/MOOV) : uniquement le compte central (tetePont=true)
-              //     du MÊME opérateur → pas les MM d'autres dépôts, pas les autres opérateurs
-              //   - Pour ESPECES_PDV : uniquement la Caisse Principale (tetePont/centrale)
-              //   - Pour BANQUE_PDV  : comptes bancaires uniquement (transferts)
+              // Flux dépôt → centrale :
+              //   ESPECES_PDV → Caisse Principale ou banques
+              //   MM (OM/MTN/WAVE/MOOV) → MM tête de pont (même opérateur) + banques
+              //   BANQUE_PDV → comptes bancaires
+              // Exclus : MM des autres dépôts (c.pdv !== null && !c.tetePont)
 
               const opType = l.type;
-              const pdvSel = document.getElementById('mVPDV2')?.value||'';
 
               if(isEspPDV){
-                // Espèces dépôt → Caisse Principale uniquement
-                return comptes.filter(c=>c.cat==='caisse'&&c.actif!==false&&(c.tetePont||!c.pdv));
+                // Cash dépôt → Caisse Principale + banques
+                const caisses = comptes.filter(c=>c.cat==='caisse'&&c.actif!==false&&(c.tetePont||!c.pdv));
+                const banques = comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
+                return [...caisses, ...banques];
               }
               if(isBqPDV){
-                // Virement → comptes bancaires
                 return comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
               }
 
-              // MM → compte central (tetePont=true) du même opérateur UNIQUEMENT
-              // Un compte central est : tetePont=true OU pas de pdv rattaché (compte global)
-              const cptsCentrales = comptes.filter(c=>
+              // MM → têtes de pont du même opérateur + banques
+              const mmCentrales = comptes.filter(c=>
                 c.actif!==false &&
                 c.cat==='mobile_money' &&
                 c.op===opType &&
-                (c.tetePont===true || !c.pdv)   // centrale = tetePont ou sans pdv
+                (c.tetePont===true || !c.pdv)  // tête de pont ou sans dépôt rattaché
               );
-              if(cptsCentrales.length>0) return cptsCentrales;
-              // Fallback : tous MM du même opérateur si pas de centrale identifiée
-              return comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money'&&c.op===opType);
+              const banques = comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
+              const caisses = comptes.filter(c=>c.cat==='caisse'&&c.actif!==false&&(c.tetePont||!c.pdv));
+              return [...mmCentrales, ...caisses, ...banques];
             })().map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
         </div>
