@@ -1671,20 +1671,20 @@ function renderLignesVersement(){
         <div class="fg"><label>${isEspPDV?'Vers caisse centrale':isBqPDV?'Vers banque centrale':'Vers compte'} *</label>
           <select onchange="updateLigneCompte(${i},this.value)">
             ${(()=>{
-              // Filtre des comptes selon le type de versement
-              // Pour les MM : proposer les comptes centraux de l'opérateur correspondant
-              // Le compte par défaut du PDV est présélectionné automatiquement
-              const pdvSel = document.getElementById('mVPDV2')?.value || '';
+              if(isEspPDV) return comptes.filter(c=>c.cat==='caisse'&&c.actif!==false);
+              if(isBqPDV)  return comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
+              // MM : filtrer par opérateur (OM/MTN/WAVE/MOOV) si le champ op existe
+              const opType = l.type;
+              const pdvSel = document.getElementById('mVPDV2')?.value||'';
               const pdvObj = pdvs.find(p=>p.id===pdvSel);
-              const opType = l.type; // 'OM','MTN','WAVE','MOOV'
-              if(isEspPDV)
-                return comptes.filter(c=>c.cat==='caisse'&&c.actif!==false);
-              if(isBqPDV)
-                return comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
-              // MM : filtrer par opérateur correspondant au type sélectionné
-              const cptsOp = comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money'&&c.op===opType);
+              // Si le PDV a un compte défaut, le présélectionner
+              const cptDefPDV = pdvObj?.compteDefaut
+                ? comptes.find(c=>c.id===pdvObj.compteDefaut&&c.actif!==false) : null;
+              // Comptes MM de l'opérateur sélectionné
+              const cptsOp = comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money'
+                &&(c.op===opType||(c.op||'').toLowerCase()===opType.toLowerCase()));
               if(cptsOp.length>0) return cptsOp;
-              // Fallback : tous comptes MM si opérateur non trouvé
+              // Fallback : tous comptes MM actifs
               return comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money');
             })().map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
