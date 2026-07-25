@@ -2955,8 +2955,6 @@ function openCPVirementBanque(){
 }
 window.openCPVirementBanque=openCPVirementBanque;
 
-// Intercepter saveMvt pour créer le mouvement bancaire côté banque aussi
-const _saveMvtOrig = window.saveMvt || saveMvt;
 
 async function delCPMvt(id){
   if(!confirm('Supprimer ce mouvement ?'))return;
