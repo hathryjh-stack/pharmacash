@@ -1675,34 +1675,38 @@ function renderLignesVersement(){
           <select onchange="updateLigneCompte(${i},this.value)">
             ${(()=>{
               // ── Logique métier versement PDV ─────────────────────────────
-              // Flux dépôt → centrale :
-              //   ESPECES_PDV → Caisse Principale ou banques
-              //   MM (OM/MTN/WAVE/MOOV) → MM tête de pont (même opérateur) + banques
-              //   BANQUE_PDV → comptes bancaires
-              // Exclus : MM des autres dépôts (c.pdv !== null && !c.tetePont)
+              // Destinations autorisées selon le type de versement :
+              //
+              // ESPECES_PDV → Caisse Principale (cat=caisse, tetePont ou sans pdv) + banques
+              // MM (OM/MTN/WAVE/MOOV) → tête de pont du MÊME opérateur + Caisse Principale + banques
+              // BANQUE_PDV → banques uniquement
+              //
+              // Règles d'exclusion strictes :
+              //   - Jamais les MM d'un autre opérateur
+              //   - Jamais les comptes MM PSRM (ils ne reçoivent que les clôtures PSRM)
+              //   - Jamais les comptes MM des dépôts (c.pdv existe et pas tetePont)
+              //   - Jamais la Petite Caisse
 
               const opType = l.type;
+              // Banques : tous comptes bancaires actifs
+              const banques = comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
+              // Caisse Principale uniquement (tetePont ou sans pdv, exclure petite caisse)
+              const caissePrinc = comptes.filter(c=>
+                c.cat==='caisse'&&c.actif!==false&&
+                (c.tetePont===true||(!c.pdv&&!(c.nom||'').toLowerCase().includes('petite')))
+              );
 
-              if(isEspPDV){
-                // Cash dépôt → Caisse Principale + banques
-                const caisses = comptes.filter(c=>c.cat==='caisse'&&c.actif!==false&&(c.tetePont||!c.pdv));
-                const banques = comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
-                return [...caisses, ...banques];
-              }
-              if(isBqPDV){
-                return comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
-              }
+              if(isEspPDV) return [...caissePrinc, ...banques];
+              if(isBqPDV)  return banques;
 
-              // MM → têtes de pont du même opérateur + banques
-              const mmCentrales = comptes.filter(c=>
+              // MM : tête de pont (tetePont=true) du même opérateur UNIQUEMENT
+              const mmTetePont = comptes.filter(c=>
                 c.actif!==false &&
                 c.cat==='mobile_money' &&
                 c.op===opType &&
-                (c.tetePont===true || !c.pdv)  // tête de pont ou sans dépôt rattaché
+                c.tetePont===true   // strictement tête de pont
               );
-              const banques = comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
-              const caisses = comptes.filter(c=>c.cat==='caisse'&&c.actif!==false&&(c.tetePont||!c.pdv));
-              return [...mmCentrales, ...caisses, ...banques];
+              return [...mmTetePont, ...caissePrinc, ...banques];
             })().map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
         </div>
