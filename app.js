@@ -2028,17 +2028,26 @@ function openCaisseModal(id){
   const pdvP=pdvs.find(p=>p.type==='principale');
   const caisseOpts=comptes.filter(c=>c.cat==='caisse'&&c.actif!==false)
     .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
-  const mmOpts=(op)=>comptes.filter(c=>
+  // Identifier le PDV PSRM une fois pour toutes
+  const _pdvPSRM = pdvs.find(p=>p.type==='principale');
+  const mmOpts=(op)=>{
+    // Clôture PSRM : uniquement les comptes MM rattachés au PDV PSRM
+    // ou sans pdv (comptes généraux PSRM comme "Orange Money — PSRM")
+    // Les têtes de pont centrales et les comptes dépôts sont exclus
+    const cptsPSRM = comptes.filter(c=>
       c.actif!==false &&
       c.cat==='mobile_money' &&
       c.op===op &&
-      // Clôture PSRM : uniquement comptes MM de la PSRM (tetePont) ou sans pdv rattaché
-      // Les comptes MM des dépôts (c.pdv !== null && !c.tetePont) sont exclus
-      (c.tetePont===true || !c.pdv)
-    ).map(c=>{
-      const label=c.tetePont?`${c.nom} ⭐ Centrale`:c.nom;
-      return`<option value="${c.id}">${label}</option>`;
-    }).join('');
+      !c.tetePont &&           // ← exclure les têtes de pont
+      (!c.pdv || c.pdv===_pdvPSRM?.id)  // ← PSRM ou sans pdv
+    );
+    // Si aucun compte PSRM trouvé → afficher la tête de pont en fallback avec avertissement
+    if(cptsPSRM.length===0){
+      return comptes.filter(c=>c.actif!==false&&c.cat==='mobile_money'&&c.op===op&&c.tetePont)
+        .map(c=>`<option value="${c.id}">⚠ ${c.nom} (centrale — créer compte PSRM)</option>`).join('');
+    }
+    return cptsPSRM.map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  };
   // Cash
   const cptCash=document.getElementById('mcCptCash');
   if(cptCash){
