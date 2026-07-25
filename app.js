@@ -813,7 +813,10 @@ window.goTo=goTo;
 // ══════════════════════════════════════════════════════
 function populateSelects(){
   const pdvO=pdvs.map(p=>`<option value="${p.id}">${p.nom}</option>`).join('');
-  const cptO=comptes.filter(c=>c.actif!==false).map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  // Trier les comptes : Banques > Caisses > MM centraux > MM PDV
+  const _ordre = c => c.cat==='banque'?0:c.cat==='caisse'?1:(c.cat==='mobile_money'&&(c.tetePont||!c.pdv))?2:3;
+  const _cptsSorted = [...comptes].filter(c=>c.actif!==false).sort((a,b)=>_ordre(a)-_ordre(b)||(a.nom||'').localeCompare(b.nom||''));
+  const cptO=_cptsSorted.map(c=>`<option value="${c.id}">${c.nom}${c.pdv&&!c.tetePont?' — '+( pdvs.find(p=>p.id===c.pdv)?.nom||'').replace('DEPOT DE ','').replace('DEPOT','').trim():''}</option>`).join('');
   const mmO=comptes.filter(c=>isMM(c)&&c.actif!==false).map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
   const bqO=comptes.filter(c=>isBanque(c)&&c.actif!==false).map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
   ['mRPDV','mVPDV','smsPDV'].forEach(id=>{const e=document.getElementById(id);if(e)e.innerHTML=pdvO;});
@@ -2876,6 +2879,28 @@ function openCPModal(type){
   openM('mMvt');
 }
 window.openCPModal=openCPModal;
+
+// ── Virement Caisse Principale → Banque ─────────────────────────────
+function openCPVirementBanque(){
+  const cp=getCaisseP();
+  if(!cp){toast('Caisse Principale introuvable','err');return;}
+  document.getElementById('mMDate').value=today();
+  document.getElementById('mMCompte').value=cp.id;
+  document.getElementById('mMType').value='virement interne';
+  document.getElementById('mMRubrique').innerHTML=getRubriquesOptions('Virement');
+  ['mMMontant','mMRef','mMNotes','mMBenefNom','mMBenefCNI','mMBenefTel','mMResponsable'].forEach(id=>{
+    const e=document.getElementById(id);if(e)e.value='';
+  });
+  document.getElementById('mMBenefType').value='Particulier';
+  document.getElementById('mMSaisie').value=currentUser.nom;
+  // Présélectionner la première banque disponible
+  const premiereBanque=comptes.find(c=>c.cat==='banque'&&c.actif!==false);
+  if(premiereBanque) document.getElementById('mMCompte').value=premiereBanque.id;
+  // Afficher note contextuelle
+  toast('Sélectionnez le compte bancaire destinataire','info');
+  openM('mMvt');
+}
+window.openCPVirementBanque=openCPVirementBanque;
 
 async function delCPMvt(id){
   if(!confirm('Supprimer ce mouvement ?'))return;
