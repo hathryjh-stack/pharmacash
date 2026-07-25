@@ -1700,14 +1700,13 @@ function renderLignesVersement(){
               if(isBqPDV)  return banques;
 
               // MM : tête de pont du même opérateur
-              // Identification : tetePont=true OU nom contient "centrale" OU sans pdv rattaché
-              // Exclusion stricte : pas les comptes pdv-dépôt, pas les comptes PSRM
+              // Identification centrale : tetePont=true OU nom "centr" OU sans pdv ni "psrm"
               const mmTetePont = comptes.filter(c=>{
                 if(!c.actif||c.cat!=='mobile_money'||c.op!==opType) return false;
-                if(c.pdv) return false; // exclure tout compte rattaché à un PDV (dépôt ou PSRM)
+                if(c.pdv) return false; // exclure dépôts
                 const nom = (c.nom||'').toLowerCase();
-                // Inclure : tetePont=true OU nom contient "central"
-                return c.tetePont===true || nom.includes('centr');
+                if(nom.includes('psrm')) return false; // exclure PSRM
+                return true; // sans pdv + même opérateur + pas PSRM = centrale
               });
               return [...mmTetePont, ...caissePrinc, ...banques];
             })().map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
