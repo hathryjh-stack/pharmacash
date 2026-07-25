@@ -1699,13 +1699,16 @@ function renderLignesVersement(){
               if(isEspPDV) return [...caissePrinc, ...banques];
               if(isBqPDV)  return banques;
 
-              // MM : tête de pont (tetePont=true) du même opérateur UNIQUEMENT
-              const mmTetePont = comptes.filter(c=>
-                c.actif!==false &&
-                c.cat==='mobile_money' &&
-                c.op===opType &&
-                c.tetePont===true   // strictement tête de pont
-              );
+              // MM : tête de pont du même opérateur
+              // Identification : tetePont=true OU nom contient "centrale" OU sans pdv rattaché
+              // Exclusion stricte : pas les comptes pdv-dépôt, pas les comptes PSRM
+              const mmTetePont = comptes.filter(c=>{
+                if(!c.actif||c.cat!=='mobile_money'||c.op!==opType) return false;
+                if(c.pdv) return false; // exclure tout compte rattaché à un PDV (dépôt ou PSRM)
+                const nom = (c.nom||'').toLowerCase();
+                // Inclure : tetePont=true OU nom contient "central"
+                return c.tetePont===true || nom.includes('centr');
+              });
               return [...mmTetePont, ...caissePrinc, ...banques];
             })().map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
@@ -2565,6 +2568,23 @@ async function saveMvt(){
     benef_nom,benef_type,benef_cni,benef_tel,responsable,
     saisie:document.getElementById('mMSaisie').value,ts:Date.now()};
   mvts.push(item);await saveItem('mvts',item);
+  // Si virement Caisse Principale → Banque, créer aussi l'entrée côté banque
+  const selBanqueDest = document.getElementById('_cpVirBanqueDest');
+  if(selBanqueDest && compteId === getCaisseP()?.id && selBanqueDest.value){
+    const banqueDest = comptes.find(c=>c.id===selBanqueDest.value);
+    if(banqueDest){
+      const mvtBanque={id:uid(),date,compte:banqueDest.id,type:'entrée',
+        rubrique:'Virement Caisse Principale',montant,
+        libelle:`Virement depuis Caisse Principale${libelle?' — '+libelle:''}`,
+        ref:ref||'',saisie:currentUser.nom,src:'virement_cp'};
+      mvts.push(mvtBanque);
+      await saveItem('mvts',mvtBanque);
+      banqueDest.solde=(banqueDest.solde||0)+montant;
+      await saveItem('comptes',banqueDest);
+    }
+    // Supprimer le select temporaire
+    selBanqueDest.parentElement?.remove();
+  }
   closeM('mMvt');toast('Mouvement enregistré ✓');renderBanques();renderDashboard();
   if(type==='sortie'){
     if(confirm('Imprimer le reçu de caisse ?')){
@@ -2902,22 +2922,41 @@ function openCPVirementBanque(){
   const cp=getCaisseP();
   if(!cp){toast('Caisse Principale introuvable','err');return;}
   document.getElementById('mMDate').value=today();
+  // Source = Caisse Principale
   document.getElementById('mMCompte').value=cp.id;
-  document.getElementById('mMType').value='virement interne';
+  document.getElementById('mMType').value='sortie';
   document.getElementById('mMRubrique').innerHTML=getRubriquesOptions('Virement');
   ['mMMontant','mMRef','mMNotes','mMBenefNom','mMBenefCNI','mMBenefTel','mMResponsable'].forEach(id=>{
     const e=document.getElementById(id);if(e)e.value='';
   });
   document.getElementById('mMBenefType').value='Particulier';
   document.getElementById('mMSaisie').value=currentUser.nom;
-  // Présélectionner la première banque disponible
-  const premiereBanque=comptes.find(c=>c.cat==='banque'&&c.actif!==false);
-  if(premiereBanque) document.getElementById('mMCompte').value=premiereBanque.id;
-  // Afficher note contextuelle
-  toast('Sélectionnez le compte bancaire destinataire','info');
+
+  // Injecter un select banque destinataire dans les notes
+  const banquesOpts = comptes
+    .filter(c=>c.cat==='banque'&&c.actif!==false)
+    .map(c=>`<option value="${c.id}">${c.nom}</option>`).join('');
+  const notesEl = document.getElementById('mMNotes');
+  if(notesEl){
+    const notesParent = notesEl.parentElement;
+    let selBanque = document.getElementById('_cpVirBanqueDest');
+    if(!selBanque){
+      const div = document.createElement('div');
+      div.className = 'fg';
+      div.style.marginBottom = '10px';
+      div.innerHTML = `<label>Banque destinataire *</label>
+        <select id="_cpVirBanqueDest" class="fi" style="border:2px solid var(--cyan)">${banquesOpts}</select>`;
+      notesParent.insertBefore(div, notesEl);
+    } else {
+      selBanque.innerHTML = banquesOpts;
+    }
+  }
   openM('mMvt');
 }
 window.openCPVirementBanque=openCPVirementBanque;
+
+// Intercepter saveMvt pour créer le mouvement bancaire côté banque aussi
+const _saveMvtOrig = window.saveMvt || saveMvt;
 
 async function delCPMvt(id){
   if(!confirm('Supprimer ce mouvement ?'))return;
