@@ -1700,14 +1700,14 @@ function renderLignesVersement(){
               if(isBqPDV)  return banques;
 
               // MM : tête de pont du même opérateur
-              // Identification centrale : tetePont=true OU nom "centr" OU sans pdv ni "psrm"
-              const mmTetePont = comptes.filter(c=>{
-                if(!c.actif||c.cat!=='mobile_money'||c.op!==opType) return false;
-                if(c.pdv) return false; // exclure dépôts
-                const nom = (c.nom||'').toLowerCase();
-                if(nom.includes('psrm')) return false; // exclure PSRM
-                return true; // sans pdv + même opérateur + pas PSRM = centrale
-              });
+              // Têtes de pont = tetePont===true, peu importe le pdv
+              // Dépôts PDV = !tetePont → exclus
+              const mmTetePont = comptes.filter(c=>
+                c.actif!==false &&
+                c.cat==='mobile_money' &&
+                c.op===opType &&
+                c.tetePont===true
+              );
               return [...mmTetePont, ...caissePrinc, ...banques];
             })().map(c=>`<option value="${c.id}"${l.compte===c.id?' selected':''}>${c.nom}</option>`).join('')}
           </select>
@@ -2132,22 +2132,18 @@ async function saveCloture(){
           if(selVal){
             compteId = selVal;
           } else {
-            // Priorité 2 : compte par défaut du PDV si opérateur correspond
-            const cptDefaut = pdvP.compteDefaut
-              ? comptes.find(c=>c.id===pdvP.compteDefaut&&c.op===type&&c.actif!==false)
-              : null;
-            // Priorité 3 : compte MM lié au PDV par son nom (ex: "OM — PSRM", "Wave — Pharmacie Principale")
+            // Priorité 2 : compte tête de pont du même opérateur (Wave PSRM, MTN PSRM, OM PSRM)
+            // La tête de pont est TOUJOURS prioritaire pour les clôtures PSRM
+            const cptTP = comptes.find(c=>c.op===type&&c.actif!==false&&c.tetePont===true);
+            // Priorité 3 : compte MM lié au PDV par son nom (ex: "OM — PSRM")
             const nomPDV = pdvP.nom.toLowerCase();
             const motsCles = nomPDV.split(/\s+/).filter(m=>m.length>3);
             const cptNomPDV = comptes.find(c=>
               c.op===type && c.actif!==false && !c.tetePont &&
               motsCles.some(mot=>c.nom.toLowerCase().includes(mot))
             );
-            // Priorité 4 : n'importe quel compte MM NON tête de pont
-            const cptLocal = comptes.find(c=>c.op===type&&c.actif!==false&&!c.tetePont);
-            // Priorité 5 : tête de pont en dernier recours absolu
-            const cptTP = comptes.find(c=>c.op===type&&c.actif!==false&&c.tetePont);
-            compteId = (cptDefaut?.id)||(cptNomPDV?.id)||(cptLocal?.id)||(cptTP?.id)||comptes[0]?.id||'';
+            // Pas de cptLocal — évite de tomber sur les comptes dépôts
+            compteId = (cptTP?.id)||(cptNomPDV?.id)||comptes[0]?.id||'';
           }
         }
 
