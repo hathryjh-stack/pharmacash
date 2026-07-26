@@ -2228,6 +2228,33 @@ async function syncRecettesPSRM() {
   renderRecettes(); renderDashboard();
 }
 window.syncRecettesPSRM = syncRecettesPSRM;
+// ── Valider TOUTES les clôtures ouvertes (toutes dates) ─────────────
+async function validerToutesCloturesHistoriques() {
+  const clotOuvertes = clotures.filter(c => c.statut === 'ouvert' && (c.totalMachine || 0) > 0);
+  if (clotOuvertes.length === 0) {
+    toast('Aucune clôture ouverte à valider', 'info');
+    return;
+  }
+  if (!confirm(`Valider ${clotOuvertes.length} clôture(s) ouvertes et générer les recettes correspondantes ?`)) return;
+
+  let nbVal = 0, nbRec = 0;
+  for (const c of clotOuvertes) {
+    c.statut    = 'validé';
+    c.valide_par = currentUser.nom;
+    c.valide_ts  = Date.now();
+    await saveItem('clotures', c);
+    const recs = await creerRecetteDepuisClot(c);
+    if (recs && recs.length) nbRec += recs.length;
+    nbVal++;
+  }
+  saveLocal();
+  toast(`✅ ${nbVal} clôture(s) validée(s) — ${nbRec} recette(s) créée(s)`, 'success');
+  renderCaisse();
+  renderRecettes();
+  renderDashboard();
+}
+window.validerToutesCloturesHistoriques = validerToutesCloturesHistoriques;
+
 
 async function validerClot(id){
   const c=clotures.find(x=>x.id===id);if(!c)return;
