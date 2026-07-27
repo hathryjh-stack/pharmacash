@@ -152,6 +152,29 @@ let facturesFourn  = LS.g('facturesFourn')  || []; // v6.0 — Factures fourniss
 let currentUser = null;
 let backupTimer = null;
 
+// ── Console de diagnostic ───────────────────────────────────────────
+// En contexte ES module, les collections ci-dessus ne sont PAS accessibles
+// depuis la console du navigateur. PCDebug expose des accesseurs en lecture
+// pour pouvoir auditer les données en production sans passer par localStorage.
+// Usage : PCDebug.comptes  /  PCDebug.versements  /  PCDebug.dump()
+window.PCDebug = {
+  get users(){return users;}, get pdvs(){return pdvs;}, get comptes(){return comptes;},
+  get recettes(){return recettes;}, get versements(){return versements;},
+  get mvts(){return mvts;}, get clotures(){return clotures;},
+  get transferts(){return transferts;}, get petiteCaisse(){return petiteCaisse;},
+  get rapportsNouveaux(){return rapportsNouveaux;}, get caissieresDB(){return caissieresDB;},
+  get vacationsDB(){return vacationsDB;}, get debiteurs(){return debiteurs;},
+  get creances(){return creances;}, get bordereaux(){return bordereaux;},
+  get fournisseurs(){return fournisseurs;}, get facturesFourn(){return facturesFourn;},
+  dump(){
+    const t={};
+    for(const k of ['users','pdvs','comptes','recettes','versements','mvts','clotures',
+      'transferts','petiteCaisse','rapportsNouveaux','caissieresDB','vacationsDB',
+      'debiteurs','creances','bordereaux','fournisseurs','facturesFourn']) t[k]=this[k].length;
+    console.table(t); return t;
+  }
+};
+
 // ══════════════════════════════════════════════════════
 // [SECTION:FIREBASE] FIREBASE HELPERS
 // ══════════════════════════════════════════════════════
@@ -1649,6 +1672,9 @@ window.updateLigneRef=updateLigneRef;
 window.updateLigneType=updateLigneType;
 window.updateLigneCompte=updateLigneCompte;
 
+// ⚠️ Appelée depuis un handler inline (onchange du select Type, ligne ~1670).
+// En contexte ES module, elle DOIT rester exposée sur window sinon le select
+// « Vers compte » ne se redessine jamais au changement d'opérateur.
 function renderLignesVersement(){
   const container=document.getElementById('lignesVersContainer');
   if(!container)return;
@@ -1773,6 +1799,7 @@ function _updateNetDisplay(i){
   const totalEl=document.getElementById('versTotal');
   if(totalEl)totalEl.textContent=fmt(total)+' '+DEVISE;
 }
+window.renderLignesVersement=renderLignesVersement;
 window._updateNetDisplay=_updateNetDisplay;
 function addLigneVersement(){
   lignesVersement.push({type:'OM',compte:comptes[0]?.id||'',montant:0,fraisOp:0,fraisTimbre:0,ref:''});
@@ -1802,6 +1829,16 @@ async function saveVersements(){
     if(!date||!pdv){toast('Date et PDV obligatoires','err');return;}
     const valides=lignesVersement.filter(l=>l.montant>0&&l.compte);
     if(!valides.length){toast('Ajoute au moins un versement avec un montant','err');return;}
+    // Garde-fou cohérence opérateur ↔ compte destinataire.
+    // Un versement MM ne peut atterrir que sur un MM du MÊME opérateur,
+    // sur la Caisse Principale ou sur une banque — jamais sur un autre opérateur.
+    for(const l of valides){
+      const cd=comptes.find(c=>c.id===l.compte);
+      if(cd&&cd.cat==='mobile_money'&&['OM','MTN','WAVE','MOOV'].includes(l.type)&&cd.op!==l.type){
+        toast(`❌ Incohérence : versement ${MM_LABEL[l.type]||l.type} dirigé vers ${cd.nom} (${MM_LABEL[cd.op]||cd.op}). Corrige le compte destinataire.`,'err');
+        return;
+      }
+    }
     const totalNouv=valides.reduce((s,l)=>s+l.montant,0);
     // Anti-doublons général : même PDV + même date + montant similaire (±1%)
     const doublon=versements.find(v=>v.pdv===pdv&&v.date===date&&Math.abs((v.montant||0)-totalNouv)<=totalNouv*0.01);
