@@ -127,6 +127,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
       <div class="nav-item admin-only" onclick="syncRecettesPSRM()" style="color:var(--cyan)"><span class="nav-icon">🔄</span> Sync recettes PSRM</div>
       <div class="nav-item admin-only" onclick="validerToutesCloturesHistoriques()" style="color:var(--green)"><span class="nav-icon">✅</span> Valider toutes clôtures</div>
       <div class="nav-item admin-only" onclick="corrigerImputationsTetePont()" style="color:var(--amber)"><span class="nav-icon">🔧</span> Corriger imputations</div>
+      <div class="nav-item admin-only" onclick="ouvrirResetGeneral()" style="color:var(--red)"><span class="nav-icon">🔄</span> Réinitialisation générale</div>
       <div class="sep" style="margin:8px 16px"></div>
       <div class="nav-item" onclick="refreshPage()" style="color:var(--cyan)"><span class="nav-icon">↻</span> Actualiser</div>
     </nav>
@@ -232,6 +233,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
             <select id="fMRubrique" class="fi" onchange="renderMvts()"><option value="">Toutes rubriques</option></select>
             <input type="text" id="fMSearch" class="fi" oninput="renderMvts()" placeholder="🔍 Rechercher libellé…" style="min-width:180px">
             <button class="btn btn-ghost btn-xs" onclick="document.getElementById('fMDate').value='';document.getElementById('fMCompte').value='';document.getElementById('fMType').value='';document.getElementById('fMRubrique').value='';document.getElementById('fMSearch').value='';renderMvts()">✕</button>
+            <button class="btn btn-sm" style="background:var(--green);color:#000" onclick="exportJournalTresorerie()">📥 Export compta (CSV)</button>
           </div>
           <div class="tbl-wrap"><table><thead><tr><th>#</th><th>Date</th><th>Compte</th><th>Type</th><th>Libellé</th><th>Réf.</th><th>Montant</th><th>Solde après</th><th>Saisi par</th><th></th></tr></thead><tbody id="mvtTbody"></tbody></table></div>
         </div>
@@ -636,7 +638,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
   <div style="font-size:.75rem;color:var(--text2);text-transform:uppercase;font-weight:700;margin-bottom:8px">Bénéficiaire / Tiers</div>
   <div class="fg2">
     <div class="fg"><label>Type</label><select id="mMBenefType"><option value="Particulier">👤 Particulier</option><option value="Société">🏢 Société</option><option value="Fournisseur">🏭 Fournisseur</option><option value="Banque">🏦 Banque</option></select></div>
-    <div class="fg"><label>Nom / Raison sociale</label><input type="text" id="mMBenefNom" placeholder="Nom complet ou société…"></div>
+    <div class="fg"><label>Nom / Raison sociale</label><input type="text" id="mMBenefNom" list="dlBenef" placeholder="Nom complet ou société…"><datalist id="dlBenef"></datalist></div>
   </div>
   <div class="fg2">
     <div class="fg"><label>CNI / RCCM / Identifiant</label><input type="text" id="mMBenefCNI" placeholder="N° identifiant…"></div>
@@ -1291,6 +1293,7 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
           <select id="nfType" class="fi">
             <option value="grossiste">Grossiste répartiteur</option>
             <option value="petit_fournisseur">Petit fournisseur</option>
+            <option value="prestataire">Prestataire de services</option>
             <option value="autre">Autre</option>
           </select>
         </div>

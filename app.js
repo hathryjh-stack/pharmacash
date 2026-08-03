@@ -2433,7 +2433,7 @@ window.renderCaisse=renderCaisse;
 function renderBanques(){
   document.getElementById('bqComptes').innerHTML=comptes.filter(c=>c.actif!==false).map(c=>{
     const col=c.color||'var(--green)',op=c.op==='AUTRE'&&c.opLibre?c.opLibre:c.op;
-    const banqueRatt=c.tetePont&&c.banqueRattachee?comptes.find(b=>b.id===c.banqueRattachee):null;
+    const banqueRatt=c.banqueRattachee?comptes.find(b=>b.id===c.banqueRattachee):null;
     // Solde via module SOLDE — source unique de vérité
     const soldeReel=SoldeModule.soldeCompte(c.id);
     return`<div class="compte-card" style="border-left:3px solid ${col};cursor:pointer" onclick="ouvrirMouvementsCompte('${c.id}')" title="Voir les mouvements">
@@ -2443,7 +2443,7 @@ function renderBanques(){
       <div style="margin-top:4px">${dispoBadge(c)}</div>
       <div class="cc-type">${c.cat==='mobile_money'?'Mobile Money':c.cat==='banque'?'Banque':'Caisse'} · ${op}</div>
       ${c.num?`<div style="font-size:.68rem;color:var(--text3);margin-top:2px;font-family:monospace">${c.num}</div>`:''}
-      ${c.tetePont&&banqueRatt?`
+      ${banqueRatt?`
         <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:6px">
           <div style="font-size:.65rem;color:var(--text3);margin-bottom:4px">→ ${banqueRatt.nom}</div>
           <button class="btn btn-green btn-xs" onclick="event.stopPropagation();ouvrirTransfertRapide('${c.id}')" style="width:100%">
@@ -2568,18 +2568,121 @@ function renderMvts(){
   }
 }
 window.renderMvts=renderMvts;
-// Rubriques comptables — stockées en LocalStorage, modifiables
-let rubriques = LS.g('rubriques') || [
-  'Salaires & charges','Loyer','Électricité / Eau','Fournitures bureau',
-  'Achat médicaments','Transport','Entretien & réparations',
-  'Frais bancaires','Remboursement emprunt','Approvisionnement banque',
-  'Avance personnel','Règlement fournisseur','Frais médicaux','Autre'
+
+// ── Export compta : journal de trésorerie unifié (CSV) ───────────────
+// Tout ce qui entre et sort, toutes sources confondues, sur la plage des
+// filtres de la page Banques & MM. Format CSV ; UTF-8 BOM + « ; » pour
+// une ouverture directe dans Excel FR. Colonnes pensées pour l'expert-comptable.
+function exportJournalTresorerie(){
+  const dDebut=document.getElementById('fMDateDebut')?.value||'';
+  const dFin=document.getElementById('fMDateFin')?.value||'';
+  const dans=(d)=> (!dDebut||d>=dDebut)&&(!dFin||d<=dFin);
+  const nomCpt=(id)=>comptes.find(c=>c.id===id)?.nom||'';
+  const nomPdv=(id)=>pdvs.find(p=>p.id===id)?.nom||'';
+  const lignes=[];
+  // 1. Mouvements financiers (dépenses, recouvrements TP, approvisionnements…)
+  for(const m of mvts){ if(!dans(m.date||''))continue;
+    // Écritures redondantes historiques (avant correction du double comptage) :
+    // la jambe banque est déjà couverte par la section Transferts ci-dessous.
+    if(/^Transfert depuis /.test(m.libelle||''))continue;
+    lignes.push([m.date,nomCpt(m.compte),m.type==='entrée'?'ENTRÉE':'SORTIE',
+      m.rubrique||'',m.libelle||'',m.ref||'',m.benef_nom||'',m.type==='entrée'?m.montant:'',
+      m.type==='sortie'?m.montant:'','Mouvement',m.saisie||'']); }
+  // 2. Versements des dépôts et de l'officine
+  for(const v of versements){ if(!dans(v.date||''))continue;
+    lignes.push([v.date,nomCpt(v.compte),'ENTRÉE','Versement '+(MM_LABEL[v.type]||v.type||''),
+      v.ref||'',v.ref||'',nomPdv(v.pdv),v.net??v.montant??'','','Versement',v.saisiPar||v.saisie||'']); }
+  // 3. Transferts internes (une ligne sortie + une ligne entrée, somme nulle)
+  for(const t of transferts){ if(!dans(t.date||''))continue;
+    lignes.push([t.date,nomCpt(t.compteSrc||t.srcId),'SORTIE','Virement interne',
+      t.notes||'',t.ref||'','','',t.montant,'Transfert',t.saisie||'']);
+    lignes.push([t.date,nomCpt(t.compteDst||t.dstId),'ENTRÉE','Virement interne',
+      t.notes||'',t.ref||'','',t.montant,'','Transfert',t.saisie||'']); }
+  // 4. Petite caisse (dépenses de fonctionnement)
+  for(const pc of petiteCaisse){ if(!dans(pc.date||''))continue;
+    lignes.push([pc.date,'Petite caisse',pc.type==='entrée'?'ENTRÉE':'SORTIE',
+      pc.rubrique||'Petite caisse',pc.libelle||pc.motif||'',pc.ref||'','',
+      pc.type==='entrée'?pc.montant:'',pc.type!=='entrée'?pc.montant:'','Petite caisse',pc.saisie||'']); }
+  if(!lignes.length){toast('Aucune opération sur la période','err');return;}
+  lignes.sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  const totE=lignes.reduce((s,l)=>s+(parseFloat(l[7])||0),0);
+  const totS=lignes.reduce((s,l)=>s+(parseFloat(l[8])||0),0);
+  const esc=(v)=>{v=String(v??'');return /[;"\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  const head=['Date','Compte','Sens','Rubrique','Libellé','Référence','PDV / Tiers','Entrée (FCFA)','Sortie (FCFA)','Source','Saisi par'];
+  let csv='\uFEFF'+head.join(';')+'\n'+lignes.map(l=>l.map(esc).join(';')).join('\n');
+  csv+='\n'+['','','','','','TOTAUX','',totE,totS,'Solde net : '+(totE-totS),''].map(esc).join(';');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=`journal_tresorerie_${dDebut||'debut'}_${dFin||today()}.csv`;
+  a.click();URL.revokeObjectURL(a.href);
+  toast(`Journal exporté — ${lignes.length} ligne(s) ✓`,'success');
+}
+window.exportJournalTresorerie=exportJournalTresorerie;
+// ── Rubriques comptables ─────────────────────────────────────────────
+// Plan de rubriques trésorerie orienté officine, inspiré SYSCOHADA révisé
+// (classes 60/61/62/64/66 pour les charges, 70/77 pour les produits).
+// Groupées pour la lisibilité des selects ; stockées à plat en LocalStorage
+// pour rester compatibles avec les mouvements déjà saisis.
+const RUBRIQUES_GROUPES = [
+  ['💰 Encaissements', [
+    'Recette ventes comptant','Règlement tiers payant (TP)','Règlement client crédit',
+    'Avoir / remboursement fournisseur','Apport exploitant / associé','Emprunt reçu',
+    'Subvention / aide','Produits financiers & intérêts','Autre encaissement'
+  ]],
+  ['📦 Achats & approvisionnement', [
+    'Paiement fournisseur','Règlement fournisseur','Achat médicaments',
+    'Achat parapharmacie & cosmétique','Achat dispositifs médicaux',
+    'Emballages & sachets','Transport sur achats'
+  ]],
+  ['👥 Personnel', [
+    'Salaires & charges','Charges sociales CNPS','Impôts sur salaires (ITS / FDFP)',
+    'Avance personnel','Primes & gratifications','Formation du personnel','Tenues & équipement personnel'
+  ]],
+  ['🏢 Locaux & fonctionnement', [
+    'Loyer','Électricité / Eau','Électricité (CIE)','Eau (SODECI)',
+    'Internet & téléphone','Gardiennage & sécurité','Nettoyage & hygiène',
+    'Entretien & réparations','Fournitures bureau','Petit matériel & équipement',
+    'Climatisation & chaîne du froid','Transport','Carburant'
+  ]],
+  ['🤝 Services extérieurs', [
+    'Honoraires (comptable, avocat, conseil)','Assurances','Publicité & communication',
+    'Frais de mission & déplacement','Cotisation Ordre des pharmaciens & syndicat',
+    'Frais de recouvrement (GASTP)','Maintenance informatique & logiciels','Frais médicaux'
+  ]],
+  ['🏛 Impôts & taxes', [
+    'Patente & taxes communales','TVA reversée','Impôts & taxes divers'
+  ]],
+  ['🏦 Financier', [
+    'Frais bancaires','Frais Mobile Money','Remboursement emprunt',
+    'Intérêts d\'emprunt','Agios & découvert'
+  ]],
+  ['🔁 Trésorerie interne', [
+    'Approvisionnement banque','Approvisionnement petite caisse','Virement interne'
+  ]],
+  ['📌 Divers', [
+    'Prélèvement exploitant','Dons & œuvres sociales','Autre'
+  ]]
 ];
+const RUBRIQUES_DEFAUT = RUBRIQUES_GROUPES.flatMap(([,items])=>items);
+let rubriques = LS.g('rubriques') || RUBRIQUES_DEFAUT.slice();
+// Migration douce : injecter les rubriques standard manquantes
+// sans toucher aux rubriques personnalisées déjà créées.
+(function migrerRubriques(){
+  let ajout=false;
+  for(const r of RUBRIQUES_DEFAUT){ if(!rubriques.includes(r)){rubriques.push(r);ajout=true;} }
+  if(ajout)LS.s('rubriques',rubriques);
+})();
 function saveRubriques(){LS.s('rubriques',rubriques);}
 
 function getRubriquesOptions(){
-  return rubriques.map(r=>`<option value="${r}">${r}</option>`).join('')+
-    '<option value="__new__">✏️ Nouvelle rubrique…</option>';
+  const standard=new Set(RUBRIQUES_DEFAUT);
+  let html=RUBRIQUES_GROUPES.map(([grp,items])=>
+    `<optgroup label="${grp}">`+items.map(r=>`<option value="${r}">${r}</option>`).join('')+'</optgroup>'
+  ).join('');
+  const persos=rubriques.filter(r=>!standard.has(r));
+  if(persos.length)html+='<optgroup label="✏️ Personnalisées">'+persos.map(r=>`<option value="${r}">${r}</option>`).join('')+'</optgroup>';
+  return html+'<option value="__new__">✏️ Nouvelle rubrique…</option>';
 }
 function onMvtRubriqueChange(){
   const sel=document.getElementById('mMRubrique');
@@ -2595,7 +2698,24 @@ function onMvtRubriqueChange(){
 }
 window.onMvtRubriqueChange=onMvtRubriqueChange;
 
+// ── Suggestions de bénéficiaires ─────────────────────────────────────
+// Alimente la datalist du champ bénéficiaire : fournisseurs/prestataires
+// actifs du référentiel + noms déjà utilisés dans les mouvements passés.
+// Objectif : une orthographe UNIQUE par tiers pour que l'export compta
+// regroupe proprement (« SODECI » ≠ « Sodeci » = deux tiers à l'export).
+function remplirBenefDatalist(){
+  const dl=document.getElementById('dlBenef');
+  if(!dl)return;
+  const noms=new Set();
+  for(const f of fournisseurs){ if(f.actif!==false&&f.nom)noms.add(f.nom); }
+  for(const m of mvts){ if(m.benef_nom)noms.add(m.benef_nom); }
+  dl.innerHTML=[...noms].sort((a,b)=>a.localeCompare(b))
+    .map(n=>`<option value="${n.replace(/"/g,'&quot;')}"></option>`).join('');
+}
+window.remplirBenefDatalist=remplirBenefDatalist;
+
 function openMvtModal(){
+  remplirBenefDatalist();
   document.getElementById('mMDate').value=today();
   document.getElementById('mMRubrique').innerHTML=getRubriquesOptions();
   ['mMMontant','mMRef','mMNotes','mMBenefNom','mMBenefCNI','mMBenefTel','mMResponsable'].forEach(id=>{
@@ -2704,10 +2824,10 @@ async function saveTransfert(){
   const item={id:uid(),date,compteSrc:srcId,compteDst:dstId,compte:srcId,
     type:'sortie',montant,ref,notes,saisie,soldeApres:src.solde,ts:Date.now()};
   transferts.push(item);await saveItem('transferts',item);
-  // Mouvement entrée côté banque
-  const mBq={id:uid(),date,compte:dstId,type:'entrée',
-    libelle:`Transfert depuis ${src.nom}`,ref,montant,soldeApres:dst.solde,saisie,ts:Date.now()};
-  mvts.push(mBq);await saveItem('mvts',mBq);
+  // NOTE : pas d'écriture mvts côté banque. Le document transferts porte les
+  // DEUX jambes (compteSrc débité / compteDst crédité) et SoldeModule les
+  // comptabilise déjà. Une écriture mvts supplémentaire créditait la banque
+  // une seconde fois — c'était le bug de double comptage des soldes.
   closeM('mTransfert');
   toast(`Transfert de ${fmt(montant)} ${DEVISE} : ${src.nom} → ${dst.nom} ✓`);
   renderBanques();renderDashboard();
@@ -2972,6 +3092,7 @@ function openCPModal(type){
   });
   document.getElementById('mMBenefType').value='Particulier';
   document.getElementById('mMSaisie').value=currentUser.nom;
+  remplirBenefDatalist();
   openM('mMvt');
 }
 window.openCPModal=openCPModal;
@@ -4017,15 +4138,22 @@ window.delPDV=delPDV;
 
 // [SECTION:ADMIN_CPT] COMPTES CRUD — avec actif/inactif (v4)
 function onTetePontChange(){
-  const checked=document.getElementById('mCptTetePont').checked;
-  document.getElementById('mCptBanqueRow').style.display=checked?'block':'none';
-  if(checked){
-    const banques=comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
-    document.getElementById('mCptBanqueRattachee').innerHTML=
-      '<option value="">— Sélectionner une banque —</option>'+
-      banques.map(b=>`<option value="${b.id}">${b.nom}</option>`).join('');
-  }
+  // La ligne « banque rattachée » reste visible quel que soit l'état de la case :
+  // décocher tête de pont ne doit plus effacer le rattachement bancaire.
+  remplirBanquesRattachees();
 }
+// Peuple le select des banques et affiche la ligne pour tout compte Mobile Money.
+function remplirBanquesRattachees(selectedId){
+  const row=document.getElementById('mCptBanqueRow');
+  const sel=document.getElementById('mCptBanqueRattachee');
+  if(!row||!sel)return;
+  const estMM=document.getElementById('mCptCat')?.value==='mobile_money';
+  row.style.display=estMM?'block':'none';
+  const banques=comptes.filter(c=>c.cat==='banque'&&c.actif!==false);
+  sel.innerHTML='<option value="">— Aucune —</option>'+
+    banques.map(b=>`<option value="${b.id}"${selectedId===b.id?' selected':''}>${b.nom}</option>`).join('');
+}
+window.remplirBanquesRattachees=remplirBanquesRattachees;
 window.onTetePontChange=onTetePontChange;
 function onCptOpChange(){
   const op=document.getElementById('mCptOp').value;
@@ -4040,7 +4168,10 @@ function onCptOpChange(){
   else if(op==='CASH')document.getElementById('mCptCat').value='caisse';
 }
 window.onCptOpChange=onCptOpChange;
-function onCptCatChange(){if(document.getElementById('mCptCat').value==='caisse')document.getElementById('mCptOp').value='CASH';}
+function onCptCatChange(){
+  if(document.getElementById('mCptCat').value==='caisse')document.getElementById('mCptOp').value='CASH';
+  remplirBanquesRattachees(document.getElementById('mCptBanqueRattachee')?.value||'');
+}
 window.onCptCatChange=onCptCatChange;
 function openCompteModal(id){
   document.getElementById('mCptTitle').textContent=id?'Modifier compte':'Nouveau compte financier';
@@ -4061,13 +4192,7 @@ function openCompteModal(id){
   const tetePont=document.getElementById('mCptTetePont');
   if(tetePont){
     tetePont.checked=c.tetePont||false;
-    document.getElementById('mCptBanqueRow').style.display=c.tetePont?'block':'none';
-    if(c.tetePont){
-      const banques=comptes.filter(b=>b.cat==='banque'&&b.actif!==false);
-      document.getElementById('mCptBanqueRattachee').innerHTML=
-        '<option value="">— Sélectionner une banque —</option>'+
-        banques.map(b=>`<option value="${b.id}"${c.banqueRattachee===b.id?' selected':''}>${b.nom}</option>`).join('');
-    }
+    remplirBanquesRattachees(c.banqueRattachee||'');
   }
   openM('mCompte');
 }
@@ -4080,7 +4205,9 @@ async function saveCompte(){
   const op=document.getElementById('mCptOp').value;
   const actifEl=document.getElementById('mCptActif');
   const tetePont=document.getElementById('mCptTetePont')?.checked||false;
-  const banqueRattachee=tetePont?document.getElementById('mCptBanqueRattachee')?.value||'':'';
+  // La banque rattachée est INDÉPENDANTE de tetePont : un compte MM PSRM
+  // (non tête de pont) doit aussi pouvoir virer ses fonds vers une banque.
+  const banqueRattachee=document.getElementById('mCptBanqueRattachee')?.value||'';
   const data={nom,cat:document.getElementById('mCptCat').value,op,
     opLibre:op==='AUTRE'?document.getElementById('mCptOpLibre').value:'',
     num:document.getElementById('mCptNum').value,contact:document.getElementById('mCptContact').value,
@@ -6369,6 +6496,103 @@ async function validerPurge() {
   renderDashboard();
 }
 window.validerPurge = validerPurge;
+
+// ══════════════════════════════════════════════════════
+// [SECTION:RESET] RÉINITIALISATION GÉNÉRALE — redémarrage sur période neuve
+// Purge les données d'ACTIVITÉ, conserve la CONFIGURATION (users, PDV,
+// comptes, débiteurs, fournisseurs, caissières, vacations) et fige les
+// soldes calculés comme nouveaux soldes initiaux de chaque compte.
+// ══════════════════════════════════════════════════════
+const TXT_RESET_ZERO="Tous les soldes repartent à 0 — tu saisiras les soldes réels d'ouverture ensuite.";
+const TXT_RESET_FIGE="Le solde calculé de chaque compte devient son nouveau solde initial.";
+const RESET_GROUPES=[
+  {id:'grpTreso',label:'Trésorerie & activité',desc:'recettes, clôtures, versements, mouvements, transferts, petite caisse, reports à nouveaux',
+   cols:[['recettes',()=>recettes],['clotures',()=>clotures],['versements',()=>versements],
+         ['mvts',()=>mvts],['transferts',()=>transferts],['petiteCaisse',()=>petiteCaisse],
+         ['rapportsNouveaux',()=>rapportsNouveaux]],defaut:true},
+  {id:'grpCreances',label:'Créances tiers payants',desc:'mouvements créances + bordereaux — ⚠ représente de l\'argent RÉELLEMENT dû par les TP',
+   cols:[['creances',()=>creances],['bordereaux',()=>bordereaux]],defaut:false},
+  {id:'grpFourn',label:'Factures fournisseurs',desc:'factures et paiements grossistes — ⚠ représente des dettes RÉELLES envers les fournisseurs',
+   cols:[['facturesFourn',()=>facturesFourn]],defaut:false}
+];
+function ouvrirResetGeneral(){
+  if(currentUser?.role!=='admin'){toast('Réservé à l\'administrateur','err');return;}
+  if(!document.getElementById('mResetGeneral')){
+    const d=document.createElement('div');
+    d.className='modal-ov';d.id='mResetGeneral';
+    d.innerHTML=`<div class="modal" style="max-width:640px"><div class="modal-hdr">
+      <div class="modal-title" style="color:var(--red)">🔄 Réinitialisation générale</div>
+      <button class="close-x" onclick="closeM('mResetGeneral')">✕</button></div>
+      <div class="modal-body" id="resetBody"></div></div>`;
+    document.body.appendChild(d);
+  }
+  const lignes=RESET_GROUPES.map(g=>{
+    const n=g.cols.reduce((t,[,fn])=>t+fn().length,0);
+    return`<label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--border);border-radius:8px;margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" id="${g.id}" ${g.defaut?'checked':''} style="margin-top:3px">
+      <div><b>${g.label}</b> — <span style="color:var(--cyan)">${n} document(s)</span>
+      <div style="font-size:.78rem;color:var(--text3)">${g.desc}</div></div></label>`;
+  }).join('');
+  document.getElementById('resetBody').innerHTML=`
+    <div style="background:var(--red-dim,rgba(239,68,68,.1));border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:.85rem">
+      <b style="color:var(--red)">⚠ Action irréversible.</b> Fais une <b>sauvegarde complète</b> (💾) avant de continuer.<br>
+      La configuration est conservée : utilisateurs, points de vente, comptes, débiteurs, fournisseurs, caissières, vacations.<br>
+      <span id="resetModeSoldeTxt"></span></div>
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--cyan);border-radius:8px;margin-bottom:8px;cursor:pointer">
+      <input type="checkbox" id="resetSoldesZero" checked style="margin-top:3px" onchange="document.getElementById('resetModeSoldeTxt').textContent=this.checked?TXT_RESET_ZERO:TXT_RESET_FIGE">
+      <div><b>Remettre tous les soldes initiaux à 0</b>
+      <div style="font-size:.78rem;color:var(--text3)">Recommandé pour un redémarrage propre : tu ressaisiras les soldes réels (comptages physiques, applis MM, relevés bancaires) dans Configuration ou via l'écran Reports à Nouveaux. Décoché = les soldes calculés actuels sont conservés comme soldes initiaux.</div></div></label>
+    ${lignes}
+    <div class="fg" style="margin-top:10px"><label>Tape <b>RESET</b> pour confirmer</label>
+      <input type="text" id="resetConfirmTxt" placeholder="RESET" autocomplete="off"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <button class="btn btn-secondary" onclick="closeM('mResetGeneral')">Annuler</button>
+      <button class="btn" style="background:var(--red);color:#fff" onclick="executerResetGeneral()">🗑 Réinitialiser</button></div>`;
+  document.getElementById('resetModeSoldeTxt').textContent=TXT_RESET_ZERO;
+  openM('mResetGeneral');
+}
+window.ouvrirResetGeneral=ouvrirResetGeneral;
+
+let _resetEnCours=false;
+async function executerResetGeneral(){
+  if(_resetEnCours)return;
+  if(document.getElementById('resetConfirmTxt')?.value.trim().toUpperCase()!=='RESET'){
+    toast('Tape RESET pour confirmer','err');return;}
+  const groupes=RESET_GROUPES.filter(g=>document.getElementById(g.id)?.checked);
+  if(!groupes.length){toast('Aucun groupe sélectionné','err');return;}
+  const total=groupes.reduce((t,g)=>t+g.cols.reduce((u,[,fn])=>u+fn().length,0),0);
+  if(!confirm(`Supprimer DÉFINITIVEMENT ${total} document(s) et repartir sur des soldes initiaux figés ?`))return;
+  _resetEnCours=true;
+  try{
+    // 1. Déterminer les soldes de redémarrage AVANT toute suppression
+    const modeZero=document.getElementById('resetSoldesZero')?.checked!==false;
+    const soldesFiges=comptes.map(c=>({c,solde:modeZero?0:SoldeModule.soldeCompte(c.id)}));
+    // 2. Purge Firestore + mémoire, collection par collection
+    let nb=0;
+    for(const g of groupes){
+      for(const [col,fn] of g.cols){
+        const docs=fn().slice();
+        for(const d of docs){await delItem(col,d.id);nb++;}
+      }
+    }
+    if(groupes.some(g=>g.id==='grpTreso')){recettes=[];clotures=[];versements=[];mvts=[];transferts=[];petiteCaisse=[];rapportsNouveaux=[];}
+    if(groupes.some(g=>g.id==='grpCreances')){creances=[];bordereaux=[];}
+    if(groupes.some(g=>g.id==='grpFourn')){facturesFourn=[];}
+    // 3. Reporter les soldes figés comme nouveaux soldes initiaux
+    for(const {c,solde} of soldesFiges){
+      c.soldeInit=solde;c.solde=solde;
+      await saveItem('comptes',c);
+    }
+    saveLocal();
+    closeM('mResetGeneral');
+    toast(`Réinitialisation terminée — ${nb} document(s) supprimé(s)${modeZero?', soldes remis à 0':', soldes initiaux figés'} ✓`,'success');
+    populateSelects();renderDashboard();
+  }catch(e){
+    console.error('Reset général :',e);
+    toast('Erreur pendant la réinitialisation — vérifie la console','err');
+  }finally{_resetEnCours=false;}
+}
+window.executerResetGeneral=executerResetGeneral;
 
 
 
