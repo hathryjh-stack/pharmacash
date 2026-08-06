@@ -229,6 +229,29 @@ async function fbDel(col,id){
   catch(e){ console.warn('fbDel → file d\'attente',col,id,e.message); _enfiler('del',col,id); }
 }
 
+// ── Époque de reset ──────────────────────────────────────────────────
+// À chaque Réinitialisation générale, un jalon horodaté est déposé dans
+// Firestore (meta/reset). Au démarrage, chaque poste compare sa file
+// d'attente hors-ligne à ce jalon et JETTE tout ordre antérieur : sinon,
+// les écritures de l'ancienne période mises en file pendant les coupures
+// réseau rejouent après la purge et RESSUSCITENT les documents supprimés.
+async function purgerFileAvantReset(){
+  if(!useFirebase)return;
+  try{
+    const qs=await getDocs(collection(db,'meta'));
+    let resetTs=0;
+    qs.forEach(d=>{ if(d.id==='reset')resetTs=d.data()?.epoch||0; });
+    if(!resetTs)return;
+    const avant=_fileAttente();
+    const apres=avant.filter(e=>(e.ts||0)>resetTs);
+    if(apres.length!==avant.length){
+      LS.s('syncQueue',apres);
+      console.warn(`File d'attente : ${avant.length-apres.length} ordre(s) antérieur(s) au reset du ${new Date(resetTs).toLocaleString('fr-FR')} abandonné(s)`);
+      majIndicateurSync();
+    }
+  }catch(e){ console.warn('Contrôle époque reset impossible :',e.message); }
+}
+
 async function rejouerFileAttente(){
   if(!useFirebase||_rejeuEnCours)return;
   let q=_fileAttente();
@@ -800,7 +823,8 @@ function startApp(){
   });
   document.getElementById('caisseDate').value=today();
   populateSelects(); updateBackupUI(); scheduleAutoBackup(); subscribeAll(); scheduleAutoRAN();
-  majIndicateurSync(); rejouerFileAttente();
+  majIndicateurSync();
+  purgerFileAvantReset().then(()=>rejouerFileAttente());
   goTo('dashboard');
 }
 
@@ -1024,6 +1048,73 @@ async function importSoldesExcel(file){
   renderDashboard();renderBanques();populateSelects();
 }
 window.importSoldesExcel=importSoldesExcel;
+
+// ══════════════════════════════════════════════════════
+// SOLDES D'OUVERTURE PAR FICHIER (v6.1)
+// Modèle généré depuis les comptes RÉELS (avec leur id Firestore),
+// puis réimport apparié par id — aucune correspondance de nom fragile,
+// couvre TOUS les comptes y compris MM PSRM et MM dépôts.
+// ══════════════════════════════════════════════════════
+function exporterModeleSoldes(){
+  if(!window.XLSX){toast('Librairie Excel non chargée — recharge la page','err');return;}
+  const CAT_LABEL={caisse:'Caisse',banque:'Banque',mobile_money:'Mobile Money'};
+  const lignes=[['ID_NE_PAS_MODIFIER','COMPTE','CATEGORIE','OPERATEUR','SOLDE_INITIAL']];
+  const actifs=comptes.filter(c=>c.actif!==false)
+    .sort((a,b)=>(a.cat||'').localeCompare(b.cat||'')||a.nom.localeCompare(b.nom));
+  for(const c of actifs)lignes.push([c.id,c.nom,CAT_LABEL[c.cat]||c.cat||'',c.op||'',c.soldeInit||0]);
+  const ws=window.XLSX.utils.aoa_to_sheet(lignes);
+  ws['!cols']=[{wch:22},{wch:34},{wch:14},{wch:12},{wch:16}];
+  const wb=window.XLSX.utils.book_new();
+  window.XLSX.utils.book_append_sheet(wb,ws,'SOLDES');
+  window.XLSX.writeFile(wb,`PharmaCash_Soldes_Ouverture_${today()}.xlsx`);
+  toast(`Modèle généré — ${actifs.length} compte(s). Remplis SOLDE_INITIAL puis réimporte ⬆️`);
+}
+window.exporterModeleSoldes=exporterModeleSoldes;
+
+let _importSoldesEnCours=false;
+async function importerSoldesOuverture(event){
+  if(_importSoldesEnCours)return;
+  const file=event.target.files?.[0];
+  if(!file)return;
+  event.target.value='';
+  if(!window.XLSX){toast('Librairie Excel non chargée — recharge la page','err');return;}
+  _importSoldesEnCours=true;
+  try{
+    const data=await file.arrayBuffer();
+    const wb=window.XLSX.read(data,{type:'array'});
+    const ws=wb.Sheets['SOLDES']||wb.Sheets[wb.SheetNames[0]];
+    if(!ws){toast('Feuille SOLDES introuvable dans le fichier','err');return;}
+    const rows=window.XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+    let maj=0;const introuvables=[],invalides=[];
+    for(let i=1;i<rows.length;i++){
+      const id=String(rows[i][0]||'').trim();
+      const nom=String(rows[i][1]||'').trim();
+      if(!id&&!nom)continue;
+      const brut=rows[i][4];
+      // Tolère les formats Excel FR : espaces, points de milliers, virgule décimale
+      const solde=parseFloat(String(brut).replace(/\s/g,'').replace(/\./g,'').replace(',','.'))
+                  || parseFloat(brut) || 0;
+      if(brut!==''&&brut!==0&&isNaN(solde)){invalides.push(nom||id);continue;}
+      const c=comptes.find(x=>x.id===id)
+            ||comptes.find(x=>x.nom.trim().toLowerCase()===nom.toLowerCase());
+      if(!c){introuvables.push(nom||id);continue;}
+      c.soldeInit=Math.round(solde);
+      c.solde=Math.round(solde);
+      await saveItem('comptes',c);maj++;
+    }
+    saveLocal();
+    let msg=`✅ Soldes d'ouverture importés — ${maj} compte(s) mis à jour`;
+    if(introuvables.length)msg+=`\n⚠ Introuvables : ${introuvables.join(' | ')}`;
+    if(invalides.length)msg+=`\n⚠ Montants illisibles : ${invalides.join(' | ')}`;
+    toast(msg,'success');
+    if(introuvables.length||invalides.length)alert(msg);
+    renderDashboard();renderBanques();populateSelects();
+  }catch(e){
+    console.error('Import soldes :',e);
+    toast('Erreur de lecture du fichier — vérifie le format','err');
+  }finally{_importSoldesEnCours=false;}
+}
+window.importerSoldesOuverture=importerSoldesOuverture;
 
 function openImportSoldes(){
   const input=document.createElement('input');
@@ -6505,6 +6596,8 @@ window.validerPurge = validerPurge;
 // ══════════════════════════════════════════════════════
 const TXT_RESET_ZERO="Tous les soldes repartent à 0 — tu saisiras les soldes réels d'ouverture ensuite.";
 const TXT_RESET_FIGE="Le solde calculé de chaque compte devient son nouveau solde initial.";
+// Référencées par le onchange inline de la case « soldes à 0 » → window obligatoire (ES module).
+window.TXT_RESET_ZERO=TXT_RESET_ZERO;window.TXT_RESET_FIGE=TXT_RESET_FIGE;
 const RESET_GROUPES=[
   {id:'grpTreso',label:'Trésorerie & activité',desc:'recettes, clôtures, versements, mouvements, transferts, petite caisse, reports à nouveaux',
    cols:[['recettes',()=>recettes],['clotures',()=>clotures],['versements',()=>versements],
@@ -6597,6 +6690,12 @@ async function executerResetGeneral(){
       if(progTxt)progTxt.textContent=`Suppression : ${nb} / ${totalDocs} document(s)`;
       if(progBar)progBar.style.width=Math.round(nb/Math.max(totalDocs,1)*100)+'%';
     }
+    // Vider la file d'attente locale : tout ordre en attente concerne
+    // l'ancienne période et ne doit JAMAIS rejouer après la purge.
+    LS.s('syncQueue',[]);majIndicateurSync();
+    // Déposer le jalon d'époque pour que les AUTRES postes jettent
+    // leur propre file au prochain démarrage.
+    if(useFirebase){try{await setDoc(doc(db,'meta','reset'),{epoch:Date.now(),par:currentUser?.nom||'',_ts:serverTimestamp()});}catch(e){console.warn('Jalon reset non déposé :',e.message);}}
     if(groupes.some(g=>g.id==='grpTreso')){recettes=[];clotures=[];versements=[];mvts=[];transferts=[];petiteCaisse=[];rapportsNouveaux=[];}
     if(groupes.some(g=>g.id==='grpCreances')){creances=[];bordereaux=[];}
     if(groupes.some(g=>g.id==='grpFourn')){facturesFourn=[];}

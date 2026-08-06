@@ -843,6 +843,14 @@ td{padding:10px 10px;border-bottom:1px solid rgba(42,47,71,.5);vertical-align:mi
   <p style="font-size:.78rem;color:var(--text2);margin-bottom:8px">Importe le fichier <b>PharmaCash_Import_Demarrage.xlsx</b> pour initialiser l'application en un clic.</p>
   <button class="btn btn-green btn-sm" onclick="document.getElementById('importExcelFile').click()">📊 Importer fichier Excel (.xlsx)</button>
   <input type="file" id="importExcelFile" accept=".xlsx,.xls" style="display:none" onchange="importerExcel(event)">
+  <div class="sep"></div>
+  <p style="font-size:.8rem;color:var(--text2);margin-bottom:4px"><b style="color:var(--cyan)">📋 Soldes d'ouverture (recommandé)</b></p>
+  <p style="font-size:.78rem;color:var(--text2);margin-bottom:8px">1. Télécharge le modèle pré-rempli avec TES comptes réels · 2. Renseigne la colonne SOLDE_INITIAL dans Excel · 3. Réimporte le fichier.</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-ghost btn-sm" onclick="exporterModeleSoldes()">⬇️ Télécharger le modèle</button>
+    <button class="btn btn-blue btn-sm" onclick="document.getElementById('importSoldesFile').click()">⬆️ Importer les soldes remplis</button>
+  </div>
+  <input type="file" id="importSoldesFile" accept=".xlsx,.xls,.csv" style="display:none" onchange="importerSoldesOuverture(event)">
   <div class="sep"></div><div style="font-size:.72rem;color:var(--text3);line-height:1.7">📁 Choisis ton dossier une fois (ex: BACKUP PHARMACASH PRO) — coche « Autoriser à chaque visite » dans la popup Chrome pour que l'auto-sauvegarde de 23h y écrive aussi<br>⏰ Auto-sauvegarde à 23h00 chaque soir (page ouverte requise)<br>☁️ Dropbox : configure ton token dans app.js</div>
 </div></div></div>
 
