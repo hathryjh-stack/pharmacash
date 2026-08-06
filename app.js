@@ -1055,8 +1055,8 @@ window.importSoldesExcel=importSoldesExcel;
 // puis réimport apparié par id — aucune correspondance de nom fragile,
 // couvre TOUS les comptes y compris MM PSRM et MM dépôts.
 // ══════════════════════════════════════════════════════
-function exporterModeleSoldes(){
-  if(!window.XLSX){toast('Librairie Excel non chargée — recharge la page','err');return;}
+async function exporterModeleSoldes(){
+  try{await loadSheetJS();}catch(e){toast('Impossible de charger la librairie Excel — vérifie la connexion','err');return;}
   const CAT_LABEL={caisse:'Caisse',banque:'Banque',mobile_money:'Mobile Money'};
   const lignes=[['ID_NE_PAS_MODIFIER','COMPTE','CATEGORIE','OPERATEUR','SOLDE_INITIAL']];
   const actifs=comptes.filter(c=>c.actif!==false)
@@ -1077,7 +1077,7 @@ async function importerSoldesOuverture(event){
   const file=event.target.files?.[0];
   if(!file)return;
   event.target.value='';
-  if(!window.XLSX){toast('Librairie Excel non chargée — recharge la page','err');return;}
+  try{await loadSheetJS();}catch(e){toast('Impossible de charger la librairie Excel — vérifie la connexion','err');return;}
   _importSoldesEnCours=true;
   try{
     const data=await file.arrayBuffer();
