@@ -55,7 +55,7 @@
 // [SECTION:IMPORTS] ══════════════════════════════════════════════════════
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { getFirestore, collection, doc, getDocs,
-         setDoc, deleteDoc, onSnapshot, serverTimestamp }
+         setDoc, deleteDoc, onSnapshot, serverTimestamp, writeBatch }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
@@ -6545,9 +6545,13 @@ function ouvrirResetGeneral(){
     ${lignes}
     <div class="fg" style="margin-top:10px"><label>Tape <b>RESET</b> pour confirmer</label>
       <input type="text" id="resetConfirmTxt" placeholder="RESET" autocomplete="off"></div>
+    <div id="resetProgress" style="display:none;margin-top:10px">
+      <div style="font-size:.82rem;margin-bottom:4px"><span id="resetProgTxt">Préparation…</span></div>
+      <div style="background:var(--surface2);border-radius:6px;height:10px;overflow:hidden">
+        <div id="resetProgBar" style="background:var(--red);height:100%;width:0%;transition:width .2s"></div></div></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
-      <button class="btn btn-secondary" onclick="closeM('mResetGeneral')">Annuler</button>
-      <button class="btn" style="background:var(--red);color:#fff" onclick="executerResetGeneral()">🗑 Réinitialiser</button></div>`;
+      <button class="btn btn-secondary" id="resetBtnAnnuler" onclick="closeM('mResetGeneral')">Annuler</button>
+      <button class="btn" id="resetBtnGo" style="background:var(--red);color:#fff" onclick="executerResetGeneral()">🗑 Réinitialiser</button></div>`;
   document.getElementById('resetModeSoldeTxt').textContent=TXT_RESET_ZERO;
   openM('mResetGeneral');
 }
@@ -6563,17 +6567,35 @@ async function executerResetGeneral(){
   const total=groupes.reduce((t,g)=>t+g.cols.reduce((u,[,fn])=>u+fn().length,0),0);
   if(!confirm(`Supprimer DÉFINITIVEMENT ${total} document(s) et repartir sur des soldes initiaux figés ?`))return;
   _resetEnCours=true;
+  const progWrap=document.getElementById('resetProgress');
+  const progTxt=document.getElementById('resetProgTxt');
+  const progBar=document.getElementById('resetProgBar');
+  const btnGo=document.getElementById('resetBtnGo');
+  if(progWrap)progWrap.style.display='block';
+  if(btnGo){btnGo.disabled=true;btnGo.textContent='⏳ Purge en cours…';}
   try{
     // 1. Déterminer les soldes de redémarrage AVANT toute suppression
     const modeZero=document.getElementById('resetSoldesZero')?.checked!==false;
     const soldesFiges=comptes.map(c=>({c,solde:modeZero?0:SoldeModule.soldeCompte(c.id)}));
-    // 2. Purge Firestore + mémoire, collection par collection
+    // 2. Purge Firestore par LOTS (writeBatch, 400 docs par requête réseau).
+    //    La purge unitaire (delItem doc par doc + saveLocal à chaque fois)
+    //    prenait plusieurs minutes sur connexion satellite et semblait figée,
+    //    poussant à fermer le modal en cours de route → purges partielles.
+    const taches=[];
+    for(const g of groupes)for(const [col,fn] of g.cols)for(const d of fn())taches.push([col,d.id]);
+    const totalDocs=taches.length;
     let nb=0;
-    for(const g of groupes){
-      for(const [col,fn] of g.cols){
-        const docs=fn().slice();
-        for(const d of docs){await delItem(col,d.id);nb++;}
+    const LOT=400;
+    for(let i=0;i<taches.length;i+=LOT){
+      const tranche=taches.slice(i,i+LOT);
+      if(useFirebase){
+        const batch=writeBatch(db);
+        for(const [col,id] of tranche)batch.delete(doc(db,col,id));
+        await batch.commit();
       }
+      nb+=tranche.length;
+      if(progTxt)progTxt.textContent=`Suppression : ${nb} / ${totalDocs} document(s)`;
+      if(progBar)progBar.style.width=Math.round(nb/Math.max(totalDocs,1)*100)+'%';
     }
     if(groupes.some(g=>g.id==='grpTreso')){recettes=[];clotures=[];versements=[];mvts=[];transferts=[];petiteCaisse=[];rapportsNouveaux=[];}
     if(groupes.some(g=>g.id==='grpCreances')){creances=[];bordereaux=[];}
@@ -6589,8 +6611,12 @@ async function executerResetGeneral(){
     populateSelects();renderDashboard();
   }catch(e){
     console.error('Reset général :',e);
-    toast('Erreur pendant la réinitialisation — vérifie la console','err');
-  }finally{_resetEnCours=false;}
+    toast('Erreur pendant la réinitialisation — relance, la purge reprendra où elle s\'est arrêtée','err');
+  }finally{
+    _resetEnCours=false;
+    const b=document.getElementById('resetBtnGo');
+    if(b){b.disabled=false;b.textContent='🗑 Réinitialiser';}
+  }
 }
 window.executerResetGeneral=executerResetGeneral;
 
